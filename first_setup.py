@@ -226,7 +226,7 @@ def run_setup():
     )
     
     while True:
-        password = ask("Придумайте надёжный пароль", secret=True)
+        password = ask("Придумайте надёжный пароль")
         
         if len(password) < 8:
             print_error("Слишком короткий! Минимум 8 символов\n")
@@ -241,7 +241,7 @@ def run_setup():
             continue
         
         # Подтверждение пароля
-        password_confirm = ask("Повторите пароль", secret=True)
+        password_confirm = ask("Повторите пароль")
         
         if password != password_confirm:
             print_error("Пароли не совпадают! Попробуйте снова\n")
