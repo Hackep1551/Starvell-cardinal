@@ -1,5 +1,6 @@
 """Основной клиент API"""
 
+import logging
 from typing import Optional, List, Dict, Any
 
 from .config import Config
@@ -7,6 +8,7 @@ from .session import SessionManager
 from .utils import BuildIdCache, extract_build_id, extract_sid_from_cookies
 from .exceptions import NotFoundError
 
+logger = logging.getLogger("API")
 
 class StarAPI:
     """
@@ -251,12 +253,21 @@ class StarAPI:
         Returns:
             dict: Результат операции с деталями запроса
         """
+        logger.debug(f"🚀 Отправка bump запроса: game_id={game_id}, categories={category_ids}")
+        
+        # Убедимся, что у нас есть SID перед bump запросом
+        if not self.session.get_sid():
+            logger.debug("⚠️ SID отсутствует, получаем через user_info...")
+            await self.get_user_info()
+        
         response = await self.session.post_json(
             f"{self.config.API_URL}/offers/bump",
             data={"gameId": game_id, "categoryIds": category_ids},
             referer=referer or self.config.BASE_URL,
             include_sid=True,
         )
+        
+        logger.debug(f"📨 Ответ bump API: {response}")
         
         return {
             "request": {"gameId": game_id, "categoryIds": category_ids},
@@ -275,6 +286,8 @@ class StarAPI:
         Returns:
             list: Список офферов пользователя
         """
+        logger.debug(f"🔍 Запрашиваю страницу пользователя {user_id}...")
+        
         html = await self.session.get_text(
             f"{self.config.BASE_URL}/users/{user_id}",
             headers={
@@ -284,6 +297,8 @@ class StarAPI:
             },
         )
         
+        logger.debug(f"📄 Получена HTML-страница, размер: {len(html)} байт")
+        
         # Парсим __NEXT_DATA__
         import re
         import json
@@ -291,24 +306,33 @@ class StarAPI:
         marker = '<script id="__NEXT_DATA__" type="application/json">'
         idx = html.find(marker)
         if idx == -1:
+            logger.warning("⚠️ Не найден маркер __NEXT_DATA__ на странице")
             return []
             
         json_start = html.find('{', idx)
         if json_start == -1:
+            logger.warning("⚠️ Не найдено начало JSON в __NEXT_DATA__")
             return []
             
         json_end = html.find('</script>', json_start)
         if json_end == -1:
+            logger.warning("⚠️ Не найден конец JSON в __NEXT_DATA__")
             return []
             
         data = json.loads(html[json_start:json_end])
+        logger.debug("✅ JSON успешно распарсен")
         
         page_props = data.get("props", {}).get("pageProps", {})
         categories = page_props.get("categoriesWithOffers", [])
         
+        logger.debug(f"📊 Найдено категорий: {len(categories)}")
+        
         offers = []
         for category in categories:
-            for offer in category.get("offers", []):
+            category_offers = category.get("offers", [])
+            logger.debug(f"  - Категория: {len(category_offers)} лотов")
+            
+            for offer in category_offers:
                 offer_id = offer.get("id")
                 price = offer.get("price")
                 availability = offer.get("availability")
@@ -327,8 +351,81 @@ class StarAPI:
                     "price": price,
                     "url": f"{self.config.BASE_URL}/offers/{offer_id}" if offer_id else None,
                 })
-                
+        
+        logger.debug(f"✅ Всего собрано лотов: {len(offers)}")
         return offers
+    
+    async def get_user_categories(self, user_id: int) -> Dict[int, List[int]]:
+        """
+        Получить все категории с лотами пользователя, сгруппированные по играм
+        
+        Args:
+            user_id: ID пользователя
+            
+        Returns:
+            dict: Словарь {game_id: [category_ids]} - все категории пользователя по играм
+        """
+        logger.debug(f"🔍 Запрашиваю категории пользователя {user_id}...")
+        
+        html = await self.session.get_text(
+            f"{self.config.BASE_URL}/users/{user_id}",
+            headers={
+                "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "cache-control": "max-age=0",
+                "upgrade-insecure-requests": "1",
+            },
+        )
+        
+        # Парсим __NEXT_DATA__
+        import json
+        
+        marker = '<script id="__NEXT_DATA__" type="application/json">'
+        idx = html.find(marker)
+        if idx == -1:
+            logger.warning("⚠️ Не найден маркер __NEXT_DATA__ на странице")
+            return {}
+            
+        json_start = html.find('{', idx)
+        json_end = html.find('</script>', json_start)
+        if json_start == -1 or json_end == -1:
+            logger.warning("⚠️ Ошибка парсинга JSON")
+            return {}
+            
+        data = json.loads(html[json_start:json_end])
+        page_props = data.get("props", {}).get("pageProps", {})
+        
+        logger.debug(f"📊 pageProps keys: {list(page_props.keys())}")
+        
+        # Правильный путь - userProfileOffers, а не categoriesWithOffers!
+        categories = page_props.get("userProfileOffers", [])
+        
+        logger.debug(f"📊 RAW userProfileOffers: {categories[:2] if categories else 'EMPTY'}")
+        logger.debug(f"📊 Всего userProfileOffers: {len(categories)}")
+        
+        # Группируем категории по играм
+        game_categories = {}
+        for idx, category in enumerate(categories):
+            logger.debug(f"  - Категория #{idx}: keys={list(category.keys())}")
+            
+            game_id = category.get("gameId")
+            category_id = category.get("id")  # ID самой категории
+            offers = category.get("offers", [])
+            offer_count = len(offers)
+            
+            logger.debug(f"    gameId={game_id}, categoryId={category_id}, offers={offer_count}")
+            
+            if game_id and category_id and offer_count > 0:
+                if game_id not in game_categories:
+                    game_categories[game_id] = []
+                if category_id not in game_categories[game_id]:
+                    game_categories[game_id].append(category_id)
+                    logger.debug(f"    ✅ Добавлено: game {game_id} -> category {category_id}")
+                    
+        logger.info(f"📦 Найдено игр: {len(game_categories)}")
+        for game_id, cat_ids in game_categories.items():
+            logger.info(f"  🎮 Game {game_id}: категории {cat_ids}")
+            
+        return game_categories
     
     # ==================== Поддержка онлайна ====================
     

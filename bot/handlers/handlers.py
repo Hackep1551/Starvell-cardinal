@@ -18,15 +18,18 @@ from bot.keyboards import (
     get_auto_delivery_lots_menu,
     get_blacklist_menu,
     get_plugins_menu,
+    get_select_template_menu,
     CBT,
 )
-from bot.handlers import auto_delivery_handlers, blacklist_handlers, plugins_handlers
+from bot.handlers import auto_delivery_handlers, blacklist_handlers, plugins_handlers, templates_handlers, extra_handlers
 
 
 router = Router()
 router.include_router(auto_delivery_handlers.router)
 router.include_router(blacklist_handlers.router)
 router.include_router(plugins_handlers.router)
+router.include_router(templates_handlers.router)
+router.include_router(extra_handlers.router)
 
 
 # === Состояния ===
@@ -312,24 +315,29 @@ async def callback_global_switches(callback: CallbackQuery):
     auto_bump = BotConfig.AUTO_BUMP_ENABLED()
     auto_delivery = BotConfig.AUTO_DELIVERY_ENABLED()
     auto_restore = BotConfig.AUTO_RESTORE_ENABLED()
-    auto_update = BotConfig.AUTO_UPDATE_ENABLED()
     auto_install = BotConfig.AUTO_UPDATE_INSTALL()
+    order_confirm = BotConfig.ORDER_CONFIRM_RESPONSE_ENABLED()
+    review_response = BotConfig.REVIEW_RESPONSE_ENABLED()
     
     # Формируем описание
     status_text = "⚙️ <b>Глобальные переключатели</b>\n\nЗдесь вы можете включать и отключать основные функции бота.\n\n"
     
     await callback.message.edit_text(
         status_text,
-        reply_markup=get_global_switches_menu(auto_bump, auto_delivery, auto_restore, auto_update, auto_install)
+        reply_markup=get_global_switches_menu(auto_bump, auto_delivery, auto_restore, auto_install, order_confirm, review_response)
     )
 
 
 @router.callback_query(F.data == CBT.SWITCH_AUTO_BUMP)
-async def callback_switch_auto_bump(callback: CallbackQuery):
+async def callback_switch_auto_bump(callback: CallbackQuery, auto_raise=None, **kwargs):
     """Переключить авто-поднятие"""
     # Переключаем
     current = BotConfig.AUTO_BUMP_ENABLED()
     BotConfig.update(**{"auto_bump.enabled": not current})
+    
+    # Если включили - триггерим немедленную проверку
+    if not current and auto_raise:
+        await auto_raise.trigger_immediate_check()
     
     # Загружаем текущий язык
     
@@ -342,18 +350,15 @@ async def callback_switch_auto_bump(callback: CallbackQuery):
     auto_bump = not current
     auto_delivery = BotConfig.AUTO_DELIVERY_ENABLED()
     auto_restore = BotConfig.AUTO_RESTORE_ENABLED()
-    auto_update = BotConfig.AUTO_UPDATE_ENABLED()
+    auto_install = BotConfig.AUTO_UPDATE_INSTALL()
+    order_confirm = BotConfig.ORDER_CONFIRM_RESPONSE_ENABLED()
+    review_response = BotConfig.REVIEW_RESPONSE_ENABLED()
     
-    status_text = "⚙️ <b>Глобальные переключатели</b>\n\nЗдесь вы можете включать и отключать основные функции бота.\n\n<b>Текущее состояние:</b>\n✨ Авто-поднятие: {}\n📦 Авто-выдача: {}\n♻️ Авто-восстановление лотов: {}\n🔄 Автообновление: {}".format(
-        "включено" if auto_bump else "выключено",
-        "включена" if auto_delivery else "выключена",
-        "включено" if auto_restore else "выключено",
-        "включено" if auto_update else "выключено"
-    )
+    status_text = "⚙️ <b>Глобальные переключатели</b>\n\nЗдесь вы можете включать и отключать основные функции бота."
     
     await callback.message.edit_text(
         status_text,
-        reply_markup=get_global_switches_menu(auto_bump, auto_delivery, auto_restore, auto_update)
+        reply_markup=get_global_switches_menu(auto_bump, auto_delivery, auto_restore, auto_install, order_confirm, review_response)
     )
 
 
@@ -375,18 +380,15 @@ async def callback_switch_auto_delivery(callback: CallbackQuery):
     auto_bump = BotConfig.AUTO_BUMP_ENABLED()
     auto_delivery = not current
     auto_restore = BotConfig.AUTO_RESTORE_ENABLED()
-    auto_update = BotConfig.AUTO_UPDATE_ENABLED()
+    auto_install = BotConfig.AUTO_UPDATE_INSTALL()
+    order_confirm = BotConfig.ORDER_CONFIRM_RESPONSE_ENABLED()
+    review_response = BotConfig.REVIEW_RESPONSE_ENABLED()
     
-    status_text = "⚙️ <b>Глобальные переключатели</b>\n\nЗдесь вы можете включать и отключать основные функции бота.\n\n<b>Текущее состояние:</b>\n✨ Авто-поднятие: {}\n📦 Авто-выдача: {}\n♻️ Авто-восстановление лотов: {}\n🔄 Автообновление: {}".format(
-        "включено" if auto_bump else "выключено",
-        "включена" if auto_delivery else "выключена",
-        "включено" if auto_restore else "выключено",
-        "включено" if auto_update else "выключено"
-    )
+    status_text = "⚙️ <b>Глобальные переключатели</b>\n\nЗдесь вы можете включать и отключать основные функции бота."
     
     await callback.message.edit_text(
         status_text,
-        reply_markup=get_global_switches_menu(auto_bump, auto_delivery, auto_restore, auto_update)
+        reply_markup=get_global_switches_menu(auto_bump, auto_delivery, auto_restore, auto_install, order_confirm, review_response)
     )
 
 
@@ -408,43 +410,15 @@ async def callback_switch_auto_restore(callback: CallbackQuery):
     auto_bump = BotConfig.AUTO_BUMP_ENABLED()
     auto_delivery = BotConfig.AUTO_DELIVERY_ENABLED()
     auto_restore = not current
-    auto_update = BotConfig.AUTO_UPDATE_ENABLED()
     auto_install = BotConfig.AUTO_UPDATE_INSTALL()
+    order_confirm = BotConfig.ORDER_CONFIRM_RESPONSE_ENABLED()
+    review_response = BotConfig.REVIEW_RESPONSE_ENABLED()
     
     status_text = "⚙️ <b>Глобальные переключатели</b>\n\nЗдесь вы можете включать и отключать основные функции бота.\n\n"
     
     await callback.message.edit_text(
         status_text,
-        reply_markup=get_global_switches_menu(auto_bump, auto_delivery, auto_restore, auto_update, auto_install)
-    )
-
-
-@router.callback_query(F.data == CBT.SWITCH_AUTO_UPDATE)
-async def callback_switch_auto_update(callback: CallbackQuery):
-    """Переключить автообновление"""
-    # Переключаем
-    current = BotConfig.AUTO_UPDATE_ENABLED()
-    BotConfig.update(**{"auto_update.enabled": not current})
-    
-    # Уведомление об изменении
-    status = "включено" if not current else "выключено"
-    await callback.answer(f"Автообновление {status}", show_alert=False)
-    
-    # Обновляем меню
-    auto_bump = BotConfig.AUTO_BUMP_ENABLED()
-    auto_delivery = BotConfig.AUTO_DELIVERY_ENABLED()
-    auto_restore = BotConfig.AUTO_RESTORE_ENABLED()
-    auto_update = not current
-    auto_install = BotConfig.AUTO_UPDATE_INSTALL()
-    
-    # Загружаем текущий язык
-    
-    
-    status_text = "⚙️ <b>Глобальные переключатели</b>\n\nЗдесь вы можете включать и отключать основные функции бота.\n\n"
-    
-    await callback.message.edit_text(
-        status_text,
-        reply_markup=get_global_switches_menu(auto_bump, auto_delivery, auto_restore, auto_update, auto_install)
+        reply_markup=get_global_switches_menu(auto_bump, auto_delivery, auto_restore, auto_install, order_confirm, review_response)
     )
 
 
@@ -463,14 +437,69 @@ async def callback_switch_auto_install(callback: CallbackQuery):
     auto_bump = BotConfig.AUTO_BUMP_ENABLED()
     auto_delivery = BotConfig.AUTO_DELIVERY_ENABLED()
     auto_restore = BotConfig.AUTO_RESTORE_ENABLED()
-    auto_update = BotConfig.AUTO_UPDATE_ENABLED()
     auto_install = not current
+    order_confirm = BotConfig.ORDER_CONFIRM_RESPONSE_ENABLED()
+    review_response = BotConfig.REVIEW_RESPONSE_ENABLED()
     
     status_text = "⚙️ <b>Глобальные переключатели</b>\n\nЗдесь вы можете включать и отключать основные функции бота.\n\n"
     
     await callback.message.edit_text(
         status_text,
-        reply_markup=get_global_switches_menu(auto_bump, auto_delivery, auto_restore, auto_update, auto_install)
+        reply_markup=get_global_switches_menu(auto_bump, auto_delivery, auto_restore, auto_install, order_confirm, review_response)
+    )
+
+
+@router.callback_query(F.data == CBT.SWITCH_ORDER_CONFIRM)
+async def callback_switch_order_confirm(callback: CallbackQuery):
+    """Переключить авто-ответ на подтверждение заказа"""
+    # Переключаем
+    current = BotConfig.ORDER_CONFIRM_RESPONSE_ENABLED()
+    BotConfig.update(**{"AutoResponse.orderConfirm": not current})
+    
+    # Уведомление об изменении
+    status = "включен" if not current else "выключен"
+    await callback.answer(f"Авто-ответ на подтверждение заказа {status}", show_alert=False)
+    
+    # Обновляем меню
+    auto_bump = BotConfig.AUTO_BUMP_ENABLED()
+    auto_delivery = BotConfig.AUTO_DELIVERY_ENABLED()
+    auto_restore = BotConfig.AUTO_RESTORE_ENABLED()
+    auto_install = BotConfig.AUTO_UPDATE_INSTALL()
+    order_confirm = not current
+    review_response = BotConfig.REVIEW_RESPONSE_ENABLED()
+    
+    status_text = "⚙️ <b>Глобальные переключатели</b>\n\nЗдесь вы можете включать и отключать основные функции бота.\n\n"
+    
+    await callback.message.edit_text(
+        status_text,
+        reply_markup=get_global_switches_menu(auto_bump, auto_delivery, auto_restore, auto_install, order_confirm, review_response)
+    )
+
+
+@router.callback_query(F.data == CBT.SWITCH_REVIEW_RESPONSE)
+async def callback_switch_review_response(callback: CallbackQuery):
+    """Переключить авто-ответ на отзыв"""
+    # Переключаем
+    current = BotConfig.REVIEW_RESPONSE_ENABLED()
+    BotConfig.update(**{"AutoResponse.reviewResponse": not current})
+    
+    # Уведомление об изменении
+    status = "включен" if not current else "выключен"
+    await callback.answer(f"Авто-ответ на отзыв {status}", show_alert=False)
+    
+    # Обновляем меню
+    auto_bump = BotConfig.AUTO_BUMP_ENABLED()
+    auto_delivery = BotConfig.AUTO_DELIVERY_ENABLED()
+    auto_restore = BotConfig.AUTO_RESTORE_ENABLED()
+    auto_install = BotConfig.AUTO_UPDATE_INSTALL()
+    order_confirm = BotConfig.ORDER_CONFIRM_RESPONSE_ENABLED()
+    review_response = not current
+    
+    status_text = "⚙️ <b>Глобальные переключатели</b>\n\nЗдесь вы можете включать и отключать основные функции бота.\n\n"
+    
+    await callback.message.edit_text(
+        status_text,
+        reply_markup=get_global_switches_menu(auto_bump, auto_delivery, auto_restore, auto_install, order_confirm, review_response)
     )
 
 

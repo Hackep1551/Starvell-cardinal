@@ -13,11 +13,26 @@ class CBT:
     """Типы callback кнопок"""
     # Главное меню
     MAIN = "main"
+    MAIN_PAGE_2 = "main:p2"
     GLOBAL_SWITCHES = "global"
     NOTIFICATIONS = "notif"
     PLUGINS = "plugins"
     AUTO_DELIVERY = "autodelivery"
     BLACKLIST = "blacklist"
+    TEMPLATES = "templates"
+    
+    # Вторая страница главного меню
+    ORDER_CONFIRM_RESPONSE = "order_confirm_resp"
+    REVIEW_RESPONSE = "review_resp"
+    CONFIGS_MENU = "configs"
+    AUTHORIZED_USERS = "auth_users"
+    
+    # Конфиги
+    CONFIG_DOWNLOAD = "cfg_download"
+    CONFIG_UPLOAD = "cfg_upload"
+    
+    # Авторизованные пользователи
+    REMOVE_AUTH_USER = "rm_auth"
     
     # Язык
     
@@ -27,6 +42,8 @@ class CBT:
     SWITCH_AUTO_RESTORE = "switch:auto_restore"
     SWITCH_AUTO_UPDATE = "switch:auto_update"
     SWITCH_AUTO_INSTALL = "switch:auto_install"
+    SWITCH_ORDER_CONFIRM = "switch:order_confirm"
+    SWITCH_REVIEW_RESPONSE = "switch:review_resp"
     
     # Уведомления
     NOTIF_MESSAGES = "notif:messages"
@@ -48,6 +65,15 @@ class CBT:
     BL_TOGGLE_RESPONSE = "bl:response"
     BL_TOGGLE_MSG_NOTIF = "bl:msg_notif"
     BL_TOGGLE_ORDER_NOTIF = "bl:order_notif"
+    
+    # Заготовки ответов
+    ADD_TEMPLATE = "tpl_add"
+    TEMPLATE_DETAIL = "tpl_detail"
+    EDIT_TEMPLATE = "tpl_edit"
+    EDIT_TEMPLATE_NAME = "tpl_edit_name"
+    EDIT_TEMPLATE_TEXT = "tpl_edit_text"
+    DELETE_TEMPLATE = "tpl_delete"
+    SELECT_TEMPLATE = "tpl_select"
     
     # Плагины
     PLUGINS_LIST = "plugins_list"
@@ -100,8 +126,8 @@ def get_main_menu(update_available: bool = False) -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton(
-                text="🚫 Чёрный список (в разработке)",
-                callback_data=CBT.BLACKLIST
+                text="� Заготовки ответов",
+                callback_data=CBT.TEMPLATES
             ),
         ],
         [
@@ -110,11 +136,78 @@ def get_main_menu(update_available: bool = False) -> InlineKeyboardMarkup:
                 callback_data=CBT.PLUGINS
             ),
         ],
+        [
+            InlineKeyboardButton(
+                text="➡️ Вперёд",
+                callback_data=CBT.MAIN_PAGE_2
+            ),
+        ],
     ])
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
-def get_global_switches_menu(auto_bump: bool, auto_delivery: bool, auto_restore: bool, auto_update: bool, auto_install: bool = False) -> InlineKeyboardMarkup:
+def get_main_menu_page_2(update_available: bool = False) -> InlineKeyboardMarkup:
+    """Вторая страница главного меню"""
+    keyboard = []
+    
+    # Если доступно обновление - показываем его первой кнопкой
+    if update_available:
+        keyboard.append([
+            InlineKeyboardButton(
+                text="🔥 Доступно обновление!",
+                callback_data="update_now"
+            )
+        ])
+    
+    keyboard.extend([
+        [
+            InlineKeyboardButton(
+                text="✅ Ответ на подтверждение заказа",
+                callback_data=CBT.ORDER_CONFIRM_RESPONSE
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="⭐ Ответ на отзыв",
+                callback_data=CBT.REVIEW_RESPONSE
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="📁 Конфиги",
+                callback_data=CBT.CONFIGS_MENU
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="🚫 Чёрный список (в разработке)",
+                callback_data=CBT.BLACKLIST
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="👥 Авторизованные пользователи",
+                callback_data=CBT.AUTHORIZED_USERS
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="⬅️ Назад",
+                callback_data=CBT.MAIN
+            ),
+        ],
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_global_switches_menu(
+    auto_bump: bool, 
+    auto_delivery: bool, 
+    auto_restore: bool, 
+    auto_install: bool = False,
+    order_confirm: bool = False,
+    review_response: bool = False
+) -> InlineKeyboardMarkup:
     """Меню глобальных переключателей"""
     
     def switch_text(name: str, enabled: bool) -> str:
@@ -142,8 +235,14 @@ def get_global_switches_menu(auto_bump: bool, auto_delivery: bool, auto_restore:
         ],
         [
             InlineKeyboardButton(
-                text=switch_text("Автообновление", auto_update),
-                callback_data=CBT.SWITCH_AUTO_UPDATE
+                text=switch_text("Ответ на подтверждение заказа", order_confirm),
+                callback_data=CBT.SWITCH_ORDER_CONFIRM
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text=switch_text("Ответ на отзыв", review_response),
+                callback_data=CBT.SWITCH_REVIEW_RESPONSE
             ),
         ],
         [
@@ -591,6 +690,140 @@ def get_plugins_menu(plugins: list, offset: int = 0) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
+def get_templates_menu(templates: list) -> InlineKeyboardMarkup:
+    """
+    Меню заготовок ответов
+    
+    Args:
+        templates: Список заготовок [{"id": "...", "name": "...", "text": "..."}, ...]
+    """
+    keyboard = []
+    
+    # Список заготовок
+    for template in templates:
+        keyboard.append([
+            InlineKeyboardButton(
+                text=f"📝 {template['name']}",
+                callback_data=f"{CBT.TEMPLATE_DETAIL}:{template['id']}"
+            )
+        ])
+    
+    # Кнопка добавления
+    keyboard.append([
+        InlineKeyboardButton(
+            text="➕ Добавить заготовку",
+            callback_data=CBT.ADD_TEMPLATE
+        )
+    ])
+    
+    # Назад в главное меню
+    keyboard.append([
+        InlineKeyboardButton(
+            text="🔙 Главное меню",
+            callback_data=CBT.MAIN
+        )
+    ])
+    
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_template_detail_menu(template_id: str) -> InlineKeyboardMarkup:
+    """
+    Детальное меню заготовки
+    
+    Args:
+        template_id: ID заготовки
+    """
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                text="✏️ Редактировать",
+                callback_data=f"{CBT.EDIT_TEMPLATE}:{template_id}"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="🗑️ Удалить",
+                callback_data=f"{CBT.DELETE_TEMPLATE}:{template_id}"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="🔙 К списку",
+                callback_data=CBT.TEMPLATES
+            )
+        ]
+    ]
+    
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_template_edit_menu(template_id: str) -> InlineKeyboardMarkup:
+    """
+    Меню редактирования заготовки
+    
+    Args:
+        template_id: ID заготовки
+    """
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                text="✏️ Изменить название",
+                callback_data=f"{CBT.EDIT_TEMPLATE_NAME}:{template_id}"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="📝 Изменить текст",
+                callback_data=f"{CBT.EDIT_TEMPLATE_TEXT}:{template_id}"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="🔙 Назад",
+                callback_data=f"{CBT.TEMPLATE_DETAIL}:{template_id}"
+            )
+        ]
+    ]
+    
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_select_template_menu(chat_id: int, templates: list = None) -> InlineKeyboardMarkup:
+    """
+    Меню выбора заготовки для отправки
+    
+    Args:
+        chat_id: ID чата для отправки
+        templates: Список заготовок (если None - загрузит автоматически)
+    """
+    from bot.core.templates import get_template_manager
+    
+    if templates is None:
+        template_manager = get_template_manager()
+        templates = template_manager.get_all()
+    
+    keyboard = []
+    
+    if templates:
+        for template in templates:
+            keyboard.append([
+                InlineKeyboardButton(
+                    text=f"📝 {template['name']}",
+                    callback_data=f"{CBT.SELECT_TEMPLATE}:{template['id']}:{chat_id}"
+                )
+            ])
+    else:
+        keyboard.append([
+            InlineKeyboardButton(
+                text="➕ Добавить заготовку",
+                callback_data=CBT.ADD_TEMPLATE
+            )
+        ])
+    
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
 def get_plugin_info_menu(uuid: str, offset: int, enabled: bool) -> InlineKeyboardMarkup:
     """
     Генерирует меню информации о плагине
@@ -622,5 +855,106 @@ def get_plugin_info_menu(uuid: str, offset: int, enabled: bool) -> InlineKeyboar
             )
         ]
     ]
+    
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_order_confirm_response_menu(enabled: bool, text: str) -> InlineKeyboardMarkup:
+    """Меню настройки ответа на подтверждение заказа"""
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                text=f"{'✅' if enabled else '❌'} Включено: {'Да' if enabled else 'Нет'}",
+                callback_data=CBT.SWITCH_ORDER_CONFIRM
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="✏️ Изменить текст ответа",
+                callback_data="edit_order_confirm_text"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="🔙 Назад",
+                callback_data=CBT.MAIN_PAGE_2
+            )
+        ]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_review_response_menu(enabled: bool, text: str) -> InlineKeyboardMarkup:
+    """Меню настройки ответа на отзыв"""
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                text=f"{'✅' if enabled else '❌'} Включено: {'Да' if enabled else 'Нет'}",
+                callback_data=CBT.SWITCH_REVIEW_RESPONSE
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="✏️ Изменить текст ответа",
+                callback_data="edit_review_text"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="🔙 Назад",
+                callback_data=CBT.MAIN_PAGE_2
+            )
+        ]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_configs_menu() -> InlineKeyboardMarkup:
+    """Меню управления конфигами"""
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                text="📥 Скачать конфиг",
+                callback_data=CBT.CONFIG_DOWNLOAD
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="📤 Загрузить конфиг",
+                callback_data=CBT.CONFIG_UPLOAD
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="🔙 Назад",
+                callback_data=CBT.MAIN_PAGE_2
+            )
+        ]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_authorized_users_menu(admin_ids: list) -> InlineKeyboardMarkup:
+    """Меню авторизованных пользователей"""
+    keyboard = []
+    
+    for admin_id in admin_ids:
+        keyboard.append([
+            InlineKeyboardButton(
+                text=f"👤 {admin_id}",
+                callback_data="empty"
+            ),
+            InlineKeyboardButton(
+                text="🗑️",
+                callback_data=f"{CBT.REMOVE_AUTH_USER}:{admin_id}"
+            )
+        ])
+    
+    keyboard.append([
+        InlineKeyboardButton(
+            text="🔙 Назад",
+            callback_data=CBT.MAIN_PAGE_2
+        )
+    ])
     
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
