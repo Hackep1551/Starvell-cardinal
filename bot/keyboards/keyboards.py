@@ -26,6 +26,7 @@ class CBT:
     SWITCH_AUTO_DELIVERY = "switch:auto_delivery"
     SWITCH_AUTO_RESTORE = "switch:auto_restore"
     SWITCH_AUTO_UPDATE = "switch:auto_update"
+    SWITCH_AUTO_INSTALL = "switch:auto_install"
     
     # Уведомления
     NOTIF_MESSAGES = "notif:messages"
@@ -65,9 +66,20 @@ def bool_to_emoji(value: bool) -> str:
     return "✅" if value else "❌"
 
 
-def get_main_menu() -> InlineKeyboardMarkup:
+def get_main_menu(update_available: bool = False) -> InlineKeyboardMarkup:
     """Главное меню (автоматизация и настройки)"""
-    keyboard = [
+    keyboard = []
+    
+    # Если доступно обновление - показываем его первой кнопкой
+    if update_available:
+        keyboard.append([
+            InlineKeyboardButton(
+                text="🔥 Доступно обновление!",
+                callback_data="update_now"
+            )
+        ])
+    
+    keyboard.extend([
         [
             InlineKeyboardButton(
                 text="⚙️ Глобальные переключатели",
@@ -98,11 +110,11 @@ def get_main_menu() -> InlineKeyboardMarkup:
                 callback_data=CBT.PLUGINS
             ),
         ],
-    ]
+    ])
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
-def get_global_switches_menu(auto_bump: bool, auto_delivery: bool, auto_restore: bool, auto_update: bool) -> InlineKeyboardMarkup:
+def get_global_switches_menu(auto_bump: bool, auto_delivery: bool, auto_restore: bool, auto_update: bool, auto_install: bool = False) -> InlineKeyboardMarkup:
     """Меню глобальных переключателей"""
     
     def switch_text(name: str, enabled: bool) -> str:
@@ -132,6 +144,12 @@ def get_global_switches_menu(auto_bump: bool, auto_delivery: bool, auto_restore:
             InlineKeyboardButton(
                 text=switch_text("Автообновление", auto_update),
                 callback_data=CBT.SWITCH_AUTO_UPDATE
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text=switch_text("Авто-установка обновлений", auto_install),
+                callback_data=CBT.SWITCH_AUTO_INSTALL
             ),
         ],
         [

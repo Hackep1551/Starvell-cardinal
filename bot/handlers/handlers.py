@@ -64,7 +64,7 @@ async def authorize_user(user_id: int):
 # === Команды ===
 
 @router.message(Command("start"))
-async def cmd_start(message: Message, state: FSMContext):
+async def cmd_start(message: Message, state: FSMContext, auto_update, **kwargs):
     """Команда /start"""
     # Загружаем текущий язык
     
@@ -75,9 +75,12 @@ async def cmd_start(message: Message, state: FSMContext):
         await state.set_state(AuthState.waiting_for_password)
         return
     
+    # Проверяем наличие обновлений
+    update_available = auto_update.update_available if auto_update else False
+    
     await message.answer(
         "🌟 <b>Starvell Bot</b>\n\nПривет! Я помогу управлять вашим магазином на Starvell.\n\nИспользуйте меню ниже для управления ботом.",
-        reply_markup=get_main_menu()
+        reply_markup=get_main_menu(update_available=update_available)
     )
 
 
@@ -111,10 +114,21 @@ async def cmd_update(message: Message, auto_update, **kwargs):
     result = await auto_update.perform_update()
     
     if result["success"]:
+        # Сбрасываем флаг уведомления после успешного обновления
+        auto_update.reset_notification_flag()
+        
         await status_msg.edit_text(
             result["message"] + "\n\n"
-            f"<tg-spoiler>Git output:\n{result['output']}</tg-spoiler>"
+            f"<tg-spoiler>Git output:\n{result['output']}</tg-spoiler>\n\n"
+            f"🔄 Перезапуск бота через 3 секунды..."
         )
+        
+        # Даём время прочитать сообщение и перезапускаем бот
+        await asyncio.sleep(3)
+        
+        import os
+        import sys
+        os.execv(sys.executable, [sys.executable] + sys.argv)
     else:
         await status_msg.edit_text(
             result["message"] + "\n\n"
@@ -243,36 +257,46 @@ async def callback_update_now(callback: CallbackQuery, auto_update, **kwargs):
         result = await auto_update.perform_update()
         
         if result["success"]:
+            # Сбрасываем флаг уведомления после успешного обновления
+            auto_update.reset_notification_flag()
+            
             response = (
-                f"✅ <b>Обновление успешно установлено!</b>\n\n"
-                f"📦 Старая версия: <code>{result['old_version']}</code>\n"
-                f"📦 Новая версия: <code>{result['new_version']}</code>\n\n"
-                f"<tg-spoiler>{result['git_output']}</tg-spoiler>\n\n"
-                f"⚠️ Для применения изменений требуется перезапуск бота."
+                f"{result['message']}\n\n"
+                f"<tg-spoiler>Git output:\n{result['output']}</tg-spoiler>\n\n"
+                f"🔄 Перезапуск бота через 3 секунды..."
             )
+            await callback.message.edit_text(response, parse_mode="HTML")
+            
+            # Даём время прочитать сообщение и перезапускаем бот
+            await asyncio.sleep(3)
+            
+            import os
+            import sys
+            os.execv(sys.executable, [sys.executable] + sys.argv)
         else:
             response = (
-                f"❌ <b>Ошибка при обновлении</b>\n\n"
-                f"Причина: {result.get('error', 'Неизвестная ошибка')}\n\n"
-                f"<tg-spoiler>{result.get('git_output', '')}</tg-spoiler>"
+                f"{result['message']}\n\n"
+                f"<tg-spoiler>Error:\n{result['output']}</tg-spoiler>"
             )
+            await callback.message.edit_text(response, parse_mode="HTML")
     except Exception as e:
         response = f"❌ <b>Ошибка при обновлении:</b>\n{str(e)}"
-    
-    await callback.message.edit_text(response, parse_mode="HTML")
+        await callback.message.edit_text(response, parse_mode="HTML")
 
 
 @router.callback_query(F.data == CBT.MAIN)
-async def callback_main_menu(callback: CallbackQuery):
+async def callback_main_menu(callback: CallbackQuery, auto_update, **kwargs):
     """Главное меню"""
     await callback.answer()
     
     # Загружаем текущий язык
     
+    # Проверяем наличие обновлений
+    update_available = auto_update.update_available if auto_update else False
     
     await callback.message.edit_text(
         "🌟 <b>Starvell Bot</b>\n\nПривет! Я помогу управлять вашим магазином на Starvell.\n\nИспользуйте меню ниже для управления ботом.",
-        reply_markup=get_main_menu()
+        reply_markup=get_main_menu(update_available=update_available)
     )
 
 
@@ -289,18 +313,14 @@ async def callback_global_switches(callback: CallbackQuery):
     auto_delivery = BotConfig.AUTO_DELIVERY_ENABLED()
     auto_restore = BotConfig.AUTO_RESTORE_ENABLED()
     auto_update = BotConfig.AUTO_UPDATE_ENABLED()
+    auto_install = BotConfig.AUTO_UPDATE_INSTALL()
     
     # Формируем описание
-    status_text = "⚙️ <b>Глобальные переключатели</b>\n\nЗдесь вы можете включать и отключать основные функции бота.\n\n<b>Текущее состояние:</b>\n✨ Авто-поднятие: {}\n📦 Авто-выдача: {}\n♻️ Авто-восстановление лотов: {}\n🔄 Автообновление: {}".format(
-        "включено" if auto_bump else "выключено",
-        "включена" if auto_delivery else "выключена",
-        "включено" if auto_restore else "выключено",
-        "включено" if auto_update else "выключено"
-    )
+    status_text = "⚙️ <b>Глобальные переключатели</b>\n\nЗдесь вы можете включать и отключать основные функции бота.\n\n"
     
     await callback.message.edit_text(
         status_text,
-        reply_markup=get_global_switches_menu(auto_bump, auto_delivery, auto_restore, auto_update)
+        reply_markup=get_global_switches_menu(auto_bump, auto_delivery, auto_restore, auto_update, auto_install)
     )
 
 
@@ -389,17 +409,13 @@ async def callback_switch_auto_restore(callback: CallbackQuery):
     auto_delivery = BotConfig.AUTO_DELIVERY_ENABLED()
     auto_restore = not current
     auto_update = BotConfig.AUTO_UPDATE_ENABLED()
+    auto_install = BotConfig.AUTO_UPDATE_INSTALL()
     
-    status_text = "⚙️ <b>Глобальные переключатели</b>\n\nЗдесь вы можете включать и отключать основные функции бота.\n\n<b>Текущее состояние:</b>\n✨ Авто-поднятие: {}\n📦 Авто-выдача: {}\n♻️ Авто-восстановление лотов: {}\n🔄 Автообновление: {}".format(
-        "включено" if auto_bump else "выключено",
-        "включена" if auto_delivery else "выключена",
-        "включено" if auto_restore else "выключено",
-        "включено" if auto_update else "выключено"
-    )
+    status_text = "⚙️ <b>Глобальные переключатели</b>\n\nЗдесь вы можете включать и отключать основные функции бота.\n\n"
     
     await callback.message.edit_text(
         status_text,
-        reply_markup=get_global_switches_menu(auto_bump, auto_delivery, auto_restore, auto_update)
+        reply_markup=get_global_switches_menu(auto_bump, auto_delivery, auto_restore, auto_update, auto_install)
     )
 
 
@@ -419,20 +435,42 @@ async def callback_switch_auto_update(callback: CallbackQuery):
     auto_delivery = BotConfig.AUTO_DELIVERY_ENABLED()
     auto_restore = BotConfig.AUTO_RESTORE_ENABLED()
     auto_update = not current
+    auto_install = BotConfig.AUTO_UPDATE_INSTALL()
     
     # Загружаем текущий язык
     
     
-    status_text = "⚙️ <b>Глобальные переключатели</b>\n\nЗдесь вы можете включать и отключать основные функции бота.\n\n<b>Текущее состояние:</b>\n✨ Авто-поднятие: {}\n📦 Авто-выдача: {}\n♻️ Авто-восстановление лотов: {}\n🔄 Автообновление: {}".format(
-        "включено" if auto_bump else "выключено",
-        "включена" if auto_delivery else "выключена",
-        "включено" if auto_restore else "выключено",
-        "включено" if auto_update else "выключено"
-    )
+    status_text = "⚙️ <b>Глобальные переключатели</b>\n\nЗдесь вы можете включать и отключать основные функции бота.\n\n"
     
     await callback.message.edit_text(
         status_text,
-        reply_markup=get_global_switches_menu(auto_bump, auto_delivery, auto_restore, auto_update)
+        reply_markup=get_global_switches_menu(auto_bump, auto_delivery, auto_restore, auto_update, auto_install)
+    )
+
+
+@router.callback_query(F.data == CBT.SWITCH_AUTO_INSTALL)
+async def callback_switch_auto_install(callback: CallbackQuery):
+    """Переключить автоматическую установку обновлений"""
+    # Переключаем
+    current = BotConfig.AUTO_UPDATE_INSTALL()
+    BotConfig.update(**{"AutoUpdate.auto_install": not current})
+    
+    # Уведомление об изменении
+    status = "включена" if not current else "выключена"
+    await callback.answer(f"Авто-установка обновлений {status}", show_alert=False)
+    
+    # Обновляем меню
+    auto_bump = BotConfig.AUTO_BUMP_ENABLED()
+    auto_delivery = BotConfig.AUTO_DELIVERY_ENABLED()
+    auto_restore = BotConfig.AUTO_RESTORE_ENABLED()
+    auto_update = BotConfig.AUTO_UPDATE_ENABLED()
+    auto_install = not current
+    
+    status_text = "⚙️ <b>Глобальные переключатели</b>\n\nЗдесь вы можете включать и отключать основные функции бота.\n\n"
+    
+    await callback.message.edit_text(
+        status_text,
+        reply_markup=get_global_switches_menu(auto_bump, auto_delivery, auto_restore, auto_update, auto_install)
     )
 
 

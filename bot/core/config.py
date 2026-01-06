@@ -337,6 +337,11 @@ class BotConfig:
         """Автоматически проверять обновления"""
         return _config_manager.get('AutoUpdate', 'enabled', True)
     
+    @staticmethod
+    def AUTO_UPDATE_INSTALL() -> bool:
+        """Автоматически устанавливать обновления и перезапускать бот"""
+        return _config_manager.get('AutoUpdate', 'auto_install', False)
+    
     # === Вечный онлайн ===
     @staticmethod
     def KEEP_ALIVE_ENABLED() -> bool:
