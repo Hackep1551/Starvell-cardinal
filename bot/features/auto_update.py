@@ -87,12 +87,9 @@ class AutoUpdateService:
                     self._notification_sent = True
                     logger.info("📨 Отправлено уведомление об обновлении")
         
-        # Запускаем фоновую проверку если автообновление включено
-        if BotConfig.AUTO_UPDATE_ENABLED():
-            asyncio.create_task(self._update_check_loop())
-            logger.info("✅ Сервис автообновления запущен (проверка каждые 15 минут)")
-        else:
-            logger.info("⏸️ Автообновление отключено (можно включить в настройках)")
+        # Запускаем фоновую проверку обновлений (всегда активна)
+        asyncio.create_task(self._update_check_loop())
+        logger.info("✅ Сервис автообновления запущен (проверка каждые 15 минут)")
     
     async def stop(self):
         """Остановить сервис"""
@@ -104,9 +101,6 @@ class AutoUpdateService:
         while self._running:
             try:
                 await asyncio.sleep(self._check_interval)
-                
-                if not BotConfig.AUTO_UPDATE_ENABLED():
-                    continue
                 
                 update_available = await self.check_for_updates(notify=False, silent=True)
                 

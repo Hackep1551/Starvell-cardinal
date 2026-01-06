@@ -44,14 +44,14 @@ class ConfigManager:
         self._config['Starvell'] = {
             'session_cookie': '',
             'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'autoRaise': '0',
-            'autoDelivery': '0',
-            'autoRestore': '0',
+            'autoRaise': 'false',
+            'autoDelivery': 'false',
+            'autoRestore': 'false',
             'locale': 'ru'
         }
         
         self._config['Telegram'] = {
-            'enabled': '1',
+            'enabled': 'true',
             'token': '',
             'secretKeyHash': '',
             'adminIds': '[]'
@@ -59,12 +59,19 @@ class ConfigManager:
         
         self._config['Notifications'] = {
             'checkInterval': '30',
-            'newMessages': '1',
-            'newOrders': '1',
-            'lotRestore': '1',
-            'botStart': '1',
-            'lotDeactivate': '1',
-            'lotBump': '1'
+            'newMessages': 'true',
+            'newOrders': 'true',
+            'lotRestore': 'true',
+            'botStart': 'true',
+            'lotDeactivate': 'true',
+            'lotBump': 'true'
+        }
+        
+        self._config['AutoResponse'] = {
+            'orderConfirm': 'false',
+            'orderConfirmText': 'Спасибо за покупку! Если возникнут вопросы - обращайтесь.',
+            'reviewResponse': 'false',
+            'reviewResponseText': 'Благодарю за отзыв! Рад был помочь.'
         }
         
         self._config['Monitor'] = {
@@ -74,9 +81,8 @@ class ConfigManager:
         }
         
         self._config['AutoRaise'] = {
-            'interval': '3600',
-            'gameId': '1',
-            'categories': '[10, 11, 12]'
+            'enabled': 'false',
+            'interval': '3600'
         }
         
         self._config['Storage'] = {
@@ -84,24 +90,24 @@ class ConfigManager:
         }
         
         self._config['Proxy'] = {
-            'enabled': '0',
+            'enabled': 'false',
             'ip': '',
             'port': '',
             'login': '',
             'password': '',
-            'check': '0'
+            'check': 'false'
         }
         
         self._config['AutoUpdate'] = {
-            'enabled': '1'
+            'enabled': 'true'
         }
         
         self._config['KeepAlive'] = {
-            'enabled': '1'
+            'enabled': 'true'
         }
         
         self._config['Other'] = {
-            'debug': '0',
+            'debug': 'false',
             'watermark': '🤖'
         }
         
@@ -114,24 +120,24 @@ class ConfigManager:
             
     def _parse_value(self, value: str) -> Union[str, int, bool, list]:
         """Парсинг значения из строки"""
-        # Пытаемся преобразовать в bool
-        if value.lower() in ('1', 'true', 'yes', 'on'):
-            return True
-        if value.lower() in ('0', 'false', 'no', 'off'):
-            return False
-            
-        # Пытаемся преобразовать в int
-        try:
-            return int(value)
-        except ValueError:
-            pass
-            
-        # Пытаемся преобразовать в list
+        # Сначала пытаемся преобразовать в list
         if value.startswith('[') and value.endswith(']'):
             try:
                 return ast.literal_eval(value)
             except:
                 pass
+        
+        # Пытаемся преобразовать в int (до bool, чтобы '1' не стало True)
+        try:
+            return int(value)
+        except ValueError:
+            pass
+        
+        # Пытаемся преобразовать в bool
+        if value.lower() in ('true', 'yes', 'on'):
+            return True
+        if value.lower() in ('false', 'no', 'off'):
+            return False
                 
         # Возвращаем как строку
         return value
@@ -151,7 +157,7 @@ class ConfigManager:
             
         # Преобразуем значение в строку
         if isinstance(value, bool):
-            str_value = '1' if value else '0'
+            str_value = 'true' if value else 'false'
         elif isinstance(value, list):
             str_value = str(value)
         else:
@@ -304,7 +310,7 @@ class BotConfig:
     def NOTIFY_LOT_BUMP() -> bool:
         return _config_manager.get('Notifications', 'lotBump', True)
     
-    # === Авто-bump ===
+    # === Авто-поднятие ===
     @staticmethod
     def AUTO_BUMP_ENABLED() -> bool:
         return _config_manager.get('Starvell', 'autoRaise', False)
@@ -312,14 +318,6 @@ class BotConfig:
     @staticmethod
     def AUTO_BUMP_INTERVAL() -> int:
         return _config_manager.get('AutoRaise', 'interval', 3600)
-    
-    @staticmethod
-    def AUTO_BUMP_GAME_ID() -> int:
-        return _config_manager.get('AutoRaise', 'gameId', 1)
-    
-    @staticmethod
-    def AUTO_BUMP_CATEGORIES() -> List[int]:
-        return _config_manager.get('AutoRaise', 'categories', [10, 11, 12])
     
     # === Авто-выдача ===
     @staticmethod
@@ -330,6 +328,27 @@ class BotConfig:
     @staticmethod
     def AUTO_RESTORE_ENABLED() -> bool:
         return _config_manager.get('Starvell', 'autoRestore', False)
+    
+    # === Автоответы ===
+    @staticmethod
+    def ORDER_CONFIRM_RESPONSE_ENABLED() -> bool:
+        """Автоответ на подтверждение заказа"""
+        return _config_manager.get('AutoResponse', 'orderConfirm', False)
+    
+    @staticmethod
+    def ORDER_CONFIRM_RESPONSE_TEXT() -> str:
+        """Текст автоответа на подтверждение заказа"""
+        return _config_manager.get('AutoResponse', 'orderConfirmText', 'Спасибо за покупку! Если возникнут вопросы - обращайтесь.')
+    
+    @staticmethod
+    def REVIEW_RESPONSE_ENABLED() -> bool:
+        """Автоответ на отзыв"""
+        return _config_manager.get('AutoResponse', 'reviewResponse', False)
+    
+    @staticmethod
+    def REVIEW_RESPONSE_TEXT() -> str:
+        """Текст автоответа на отзыв"""
+        return _config_manager.get('AutoResponse', 'reviewResponseText', 'Благодарю за отзыв! Рад был помочь.')
     
     # === Автообновление ===
     @staticmethod

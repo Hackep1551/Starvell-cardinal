@@ -2,6 +2,7 @@
 
 import asyncio
 import time
+import json
 from typing import Optional, Dict, Any
 import aiohttp
 from aiohttp import ClientTimeout, ClientResponseError
@@ -166,8 +167,23 @@ class SessionManager:
                     cookies=cookies,
                     json=data,
                 ) as resp:
+                    # Для ошибок читаем тело ответа для отладки
+                    if resp.status >= 400:
+                        try:
+                            error_body = await resp.text()
+                            # Пытаемся распарсить как JSON
+                            try:
+                                error_data = json.loads(error_body)
+                                error_message = error_data.get("message") or error_data.get("error") or error_body
+                            except:
+                                error_message = error_body
+                        except:
+                            error_message = f"HTTP {resp.status}"
+                    
                     # Обработка статус кодов
-                    if resp.status == 401:
+                    if resp.status == 400:
+                        raise StarAPIError(f"Bad Request (400): {error_message}")
+                    elif resp.status == 401:
                         raise AuthenticationError("Неверный session cookie")
                     elif resp.status == 404:
                         raise NotFoundError(f"Ресурс не найден: {url}")

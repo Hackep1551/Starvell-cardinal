@@ -5,8 +5,9 @@
 import asyncio
 import logging
 import time
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 from datetime import datetime
+
 
 from bot.core.config import BotConfig
 
@@ -23,15 +24,19 @@ class AutoRaiseService:
         self.raise_time: Dict[int, int] = {}  # game_id -> timestamp следующего поднятия
         self.raised_time: Dict[int, int] = {}  # game_id -> timestamp последнего поднятия
         self._task: asyncio.Task = None
+        self._force_check = asyncio.Event()  # Событие для принудительной проверки
         
     async def start(self):
         """Запустить сервис"""
-        if not await self._has_lots():
-            logger.info("🔵 Цикл авто-поднятия не запущен: лоты не обнаружены на аккаунте")
-            return
-            
         self._task = asyncio.create_task(self._raise_loop())
-        logger.info("🔵 Цикл авто-поднятия запущен (это не значит что auto-raise включен)")
+        if BotConfig.AUTO_BUMP_ENABLED():
+            logger.info("🔵 Цикл авто-поднятия запущен")
+        else:
+            logger.info("⏸️ Цикл авто-поднятия в режиме ожидания (отключено в настройках)")
+    
+    async def trigger_immediate_check(self):
+        """Триггер немедленной проверки и поднятия (при включении)"""
+        self._force_check.set()
     
     async def stop(self):
         """Остановить сервис"""
@@ -43,31 +48,26 @@ class AutoRaiseService:
                 pass
         logger.info("Сервис авто-поднятия остановлен")
     
-    async def _has_lots(self) -> bool:
-        """Проверить наличие лотов"""
-        try:
-            user_info = await self.starvell.get_user_info()
-            user_id = user_info.get("user", {}).get("id")
-            
-            if not user_id:
-                return False
-                
-            offers = await self.starvell.api.get_user_offers(user_id)
-            return offers and len(offers) > 0
-        except Exception as e:
-            logger.debug(f"Ошибка проверки лотов: {e}")
-            return False
-    
     async def _raise_loop(self):
         """Бесконечный цикл поднятия лотов"""
         while True:
             try:
                 # Проверяем, включено ли автоподнятие
                 if not BotConfig.AUTO_BUMP_ENABLED():
-                    await asyncio.sleep(10)
+                    # Ждём события принудительной проверки или 10 секунд
+                    try:
+                        await asyncio.wait_for(self._force_check.wait(), timeout=10)
+                        self._force_check.clear()
+                        # Проверяем ещё раз - может включили
+                        if not BotConfig.AUTO_BUMP_ENABLED():
+                            continue
+                        logger.info("✅ Авто-поднятие включено! Запускаю цикл...")
+                    except asyncio.TimeoutError:
+                        pass
                     continue
                 
-                # Поднимаем лоты и получаем время следующего вызова
+                # Попытка поднять лоты напрямую (проверка наличия через API bump)
+                logger.debug("🚀 Запускаю процедуру поднятия лотов...")
                 next_time = await self._raise_lots()
                 
                 # Рассчитываем задержку
@@ -75,8 +75,9 @@ class AutoRaiseService:
                 
                 if delay <= 0:
                     continue
-                    
-                await asyncio.sleep(delay)
+                
+                # Спим с периодическим логированием оставшегося времени
+                await self._sleep_with_countdown(delay)
                 
             except asyncio.CancelledError:
                 break
@@ -84,45 +85,218 @@ class AutoRaiseService:
                 logger.error(f"Ошибка в цикле поднятия: {e}", exc_info=True)
                 await asyncio.sleep(10)
     
+    async def _sleep_with_countdown(self, total_seconds: int, chunk_seconds: int = 600):
+        """
+        Асинхронный sleep с периодическим логированием обратного отсчета
+        и обязательным пробуждением не реже чем раз в chunk_seconds (по умолчанию 10 минут)
+        для повторной проверки наличия новых лотов.
+        
+        Args:
+            total_seconds: Общее время ожидания в секундах
+            chunk_seconds: Максимальная непрерывная пауза перед промежуточной проверкой
+        """
+        log_intervals = [
+            3600, 3000, 2400, 1800, 1200, 900, 600, 300, 180, 120, 60, 30, 10, 5, 3, 2, 1
+        ]
+        remaining = total_seconds
+        logger.debug(f"⏳ Ожидание до следующего поднятия: {self._time_to_str(total_seconds)} (chunk {chunk_seconds}s)")
+
+        while remaining > 0:
+            step = min(remaining, chunk_seconds)
+            end_time = int(time.time()) + step
+
+            while True:
+                current_time = int(time.time())
+                left_in_step = end_time - current_time
+
+                if left_in_step <= 0:
+                    break
+
+                if self._force_check.is_set():
+                    self._force_check.clear()
+                    logger.info("🔄 Принудительная проверка - прерываем ожидание")
+                    return
+
+                # Логируем только ключевые точки и не засоряем INFO
+                for interval in log_intervals:
+                    if left_in_step == interval:
+                        logger.debug(f"⏲️ До следующего поднятия осталось: {self._time_to_str(remaining)}")
+                        break
+
+                await asyncio.sleep(1)
+
+            remaining = max(0, remaining - step)
+
+            # Если ещё осталось ждать, выходим в основной цикл для повторной проверки новых лотов
+            if remaining > 0:
+                logger.debug("🔁 Промежуточная проверка новых лотов после 10 минут ожидания")
+                return
+    
     async def _raise_lots(self) -> int:
         """
-        Поднять лоты
+        Автоматическое поднятие ВСЕХ лотов пользователя
+        Определяет категории динамически из профиля
+        Оптимизирует таймеры - группирует лоты с близким временем поднятия
         
         Returns:
             Timestamp следующего вызова
         """
-        next_call = float("inf")
         current_time = int(time.time())
-        
-        # Получаем настройки из конфига
-        game_id = BotConfig.AUTO_BUMP_GAME_ID()
-        categories = BotConfig.AUTO_BUMP_CATEGORIES()
         interval = BotConfig.AUTO_BUMP_INTERVAL()
         
-        # Проверяем, не рано ли поднимать
-        saved_time = self.raise_time.get(game_id)
+        # Для сбора времени следующих поднятий всех игр
+        all_next_times = []
         
-        if saved_time and saved_time > current_time:
-            # Ещё не время - обновляем next_call и выходим
-            next_call = saved_time if saved_time < next_call else next_call
-            return int(next_call) if next_call < float("inf") else 10
+        logger.info("🔍 Начинаю автоматическое определение категорий...")
         
-        # Пытаемся поднять лоты
+        try:
+            # Получаем ID пользователя
+            user_info = await self.starvell.get_user_info()
+            user_id = user_info.get("user", {}).get("id")
+            
+            if not user_id:
+                logger.error("❌ Не удалось получить ID пользователя")
+                return current_time + 300  # Попробуем через 5 минут
+            
+            # Получаем список лотов для вывода названий
+            offers = await self.starvell.api.get_user_offers(user_id)
+            
+            if offers:
+                logger.info(f"📦 Найдено лотов: {len(offers)}")
+                for idx, offer in enumerate(offers, 1):  # Показываем первые 5
+                    title = offer.get('title', 'Без названия')
+                    logger.info(f"  {idx}. {title}")
+                if len(offers) > 5:
+                    logger.info(f"  ... и ещё {len(offers) - 5} лотов")
+            
+            # Получаем все категории пользователя автоматически
+            game_categories = await self.starvell.api.get_user_categories(user_id)
+            
+            if not game_categories:
+                logger.warning("📭 Не найдено категорий с лотами")
+                logger.warning(f"� Проверьте профиль: https://starvell.com/users/{user_id}")
+                return current_time + 600  # Попробуем через 10 минут
+            
+            logger.info(f"✅ Найдено игр с лотами: {len(game_categories)}")
+            
+            # Поднимаем лоты для каждой игры
+            for game_id, categories in game_categories.items():
+                logger.debug(f"🎮 Обрабатываю игру {game_id}, категории: {categories}")
+                
+                # Проверяем, не рано ли поднимать эту игру
+                saved_time = self.raise_time.get(game_id)
+                
+                if saved_time and saved_time > current_time:
+                    remaining = saved_time - current_time
+                    logger.info(f"⏰ Игра {game_id}: поднятие через {self._time_to_str(remaining)}")
+                    all_next_times.append(saved_time)
+                    continue
+                
+                # Поднимаем лоты этой игры
+                bump_next_time = await self._raise_game_lots(game_id, categories, interval, current_time)
+                
+                # Добавляем в список времен
+                if bump_next_time:
+                    all_next_times.append(bump_next_time)
+                
+        except Exception as e:
+            logger.error(f"❌ Ошибка в процессе поднятия: {e}", exc_info=True)
+            return current_time + 600  # Попробуем через 10 минут
+            
+        # Оптимизация: группируем близкие по времени поднятия
+        if all_next_times:
+            next_call = self._optimize_next_call(all_next_times, current_time)
+            logger.info(f"📅 Следующая проверка через {self._time_to_str(next_call - current_time)}")
+            return next_call
+        else:
+            # Если нет запланированных поднятий, используем стандартный интервал
+            return current_time + interval
+    
+    def _optimize_next_call(self, next_times: List[int], current_time: int) -> int:
+        """
+        Оптимизирует время следующей проверки
+        Группирует лоты с близким временем поднятия (в пределах получаса)
+        
+        Args:
+            next_times: Список времен следующих поднятий
+            current_time: Текущее время
+            
+        Returns:
+            Оптимизированное время следующей проверки
+        """
+        if not next_times:
+            return current_time + BotConfig.AUTO_BUMP_INTERVAL()
+        
+        # Сортируем времена
+        sorted_times = sorted(next_times)
+        earliest = sorted_times[0]
+        
+        # Время до ближайшего поднятия
+        time_to_earliest = earliest - current_time
+        
+        # Округляем вверх до ближайшего получаса (1800 секунд = 30 минут)
+        # Пример: если осталось 1:20 (4800с), 1:11 (4260с), 1:01 (3660с) - все округлятся до 1:30 (5400с)
+        half_hour = 1800
+        
+        # Если времени меньше получаса - не округляем, возвращаем как есть
+        if time_to_earliest < half_hour:
+            logger.debug(f"⚡ Времени мало ({self._time_to_str(time_to_earliest)}), не округляем")
+            return earliest
+        
+        # Округляем вверх до ближайшего получаса
+        rounded = ((time_to_earliest + half_hour - 1) // half_hour) * half_hour
+        optimized_time = current_time + rounded
+        
+        # Проверяем, сколько лотов попадает в этот интервал (±15 минут)
+        tolerance = 900  # 15 минут
+        grouped_count = sum(1 for t in sorted_times if abs(t - optimized_time) <= tolerance)
+        
+        if grouped_count > 1:
+            logger.debug(f"🔄 Оптимизация: {grouped_count} игр(ы) будут проверены вместе")
+            
+            # Выводим детали группировки
+            grouped_games = []
+            for idx, t in enumerate(sorted_times):
+                if abs(t - optimized_time) <= tolerance:
+                    time_diff = t - current_time
+                    grouped_games.append(self._time_to_str(time_diff))
+                    logger.debug(f"   - Игра #{idx+1}: запланирована через {self._time_to_str(time_diff)}")
+            
+                if len(grouped_games) > 1:
+                    logger.debug(f"   Времена: {', '.join(grouped_games[:3])}" + 
+                               (f" + ещё {len(grouped_games)-3}" if len(grouped_games) > 3 else ""))
+        else:
+            logger.debug(f"⏰ Одна игра, время: {self._time_to_str(time_to_earliest)}")
+        
+        return optimized_time
+    
+    async def _raise_game_lots(self, game_id: int, categories: List[int], interval: int, current_time: int) -> int:
+        """
+        Поднять лоты конкретной игры
+        
+        Args:
+            game_id: ID игры
+            categories: Список ID категорий
+            interval: Интервал между поднятиями
+            current_time: Текущее время
+            
+        Returns:
+            Timestamp следующего поднятия
+        """
         raise_ok = False
-        error_text = ""
         time_delta = ""
         
         try:
             await asyncio.sleep(1)
             
-            # Вызываем API поднятия через StarvellService
+            # Вызываем API поднятия
             result = await self.starvell.bump_offers(game_id, categories)
             
             # Проверяем успешность
             response = result.get("response", {})
             
-            if response.get("success") or not response.get("error"):
-                logger.info(f"⤴️ Все лоты игры ID={game_id} подняты!")
+            if response.get("success") or (not response.get("error") and response.get("success") != False):
+                logger.info(f"✅ Лоты игры ID={game_id} (категории {categories}) подняты!")
                 raise_ok = True
                 
                 # Обновляем временные метки
@@ -138,7 +312,10 @@ class AutoRaiseService:
                 # Рассчитываем следующее поднятие
                 next_time = new_time + interval
                 self.raise_time[game_id] = next_time
-                next_call = next_time if next_time < next_call else next_call
+                
+                # Округляем оставшееся время до получаса для вывода
+                rounded_interval = ((interval + 1799) // 1800) * 1800
+                logger.info(f"⏰ Следующее поднятие через ~{self._time_to_str(rounded_interval)}.{time_delta}")
                 
                 # Отправляем уведомление
                 if self.notifier:
@@ -146,47 +323,60 @@ class AutoRaiseService:
                         await self.notifier.notify_lots_raised(game_id, time_delta)
                     except Exception as e:
                         logger.debug(f"Ошибка отправки уведомления: {e}")
+                        
+                return next_time
+            else:
+                # API вернул ошибку
+                error = response.get("error") or response.get("message") or "Неизвестная ошибка"
+                raise Exception(error)
                 
         except Exception as e:
             error_msg = str(e)
             
+            # Проверяем, есть ли указание на отсутствие лотов
+            if any(keyword in error_msg.lower() for keyword in ["нет лотов", "no offers", "no lots", "немає лотів"]):
+                logger.warning(f"📭 API сообщает: нет лотов для поднятия (game_id={game_id}, categories={categories})")
+                logger.warning(f"💡 Категории были определены автоматически")
+                logger.warning(f"💡 Возможно, все лоты этой игры сняты с продажи")
+                return current_time + 300  # Повторим через 5 минут
+                
             # Проверяем, содержит ли ошибка информацию о времени ожидания
-            if any(keyword in error_msg.lower() for keyword in ["подождите", "wait", "зачекайте"]):
-                # Парсим время ожидания
+            elif any(keyword in error_msg.lower() for keyword in ["подождите", "wait", "зачекайте", "через"]):
+                # Парсим время ожидания из ошибки API
                 wait_time = self._parse_wait_time(error_msg)
                 
                 if wait_time:
-                    logger.warning(
-                        f"⏳ Не удалось поднять лоты игры ID={game_id}. "
-                        f"Starvell говорит: \"{error_msg}\". "
-                        f"Следующая попытка через {self._time_to_str(wait_time)}."
+                    # Округляем время до получаса вверх для вывода
+                    rounded_wait = ((wait_time + 1799) // 1800) * 1800
+                    
+                    logger.debug(
+                        f"⏳ Лоты игры ID={game_id} уже поднимались недавно."
                     )
+                    logger.debug(f"📨 API сообщает: \"{error_msg}\"")
+                    logger.debug(f"⏰ Следующее поднятие через ~{self._time_to_str(rounded_wait)}")
+                    
+                    # Устанавливаем время следующего поднятия
                     next_time = current_time + wait_time
+                    self.raise_time[game_id] = next_time
+                    return next_time
                 else:
                     logger.error(f"❌ Непредвиденная ошибка при поднятии лотов игры ID={game_id}. Пауза на 10 секунд...")
                     logger.debug("TRACEBACK", exc_info=True)
                     await asyncio.sleep(10)
-                    next_time = current_time + 1
+                    return current_time + 60
                     
-                self.raise_time[game_id] = next_time
-                next_call = next_time if next_time < next_call else next_call
-                
             elif "429" in error_msg or "403" in error_msg or "503" in error_msg:
                 # Ошибка сервера - ждём 1 минуту
                 logger.warning(f"⚠️ Ошибка сервера при поднятии лотов игры ID={game_id}. Пауза на 1 минуту...")
                 await asyncio.sleep(60)
-                next_time = current_time + 60
-                next_call = next_time if next_time < next_call else next_call
+                return current_time + 60
                 
             else:
                 # Другая ошибка
                 logger.error(f"❌ Ошибка при поднятии лотов игры ID={game_id}: {e}")
                 logger.debug("TRACEBACK", exc_info=True)
                 await asyncio.sleep(10)
-                next_time = current_time + 1
-                next_call = next_time if next_time < next_call else next_call
-        
-        return int(next_call) if next_call < float("inf") else 10
+                return current_time + 60
     
     def _parse_wait_time(self, message: str) -> int:
         """
@@ -201,47 +391,62 @@ class AutoRaiseService:
         import re
         
         message_lower = message.lower()
+        total_seconds = 0
         
-        # Ищем часы (hours)
+        # Ищем часы (hours) - учитываем множественное число
         hours_patterns = [
-            r'(\d+)\s*час',  # "2 часа"
-            r'(\d+)\s*hour',  # "2 hours"
-            r'(\d+)\s*hr',    # "2 hr"
-            r'(\d+)\s*h',     # "2h"
+            r'(\d+(?:\.\d+)?)\s*час[аов]?',  # "3 часа", "1 час", "2 часов"
+            r'(\d+(?:\.\d+)?)\s*hour[s]?',   # "2 hours", "1 hour"
+            r'(\d+(?:\.\d+)?)\s*hr[s]?',     # "2 hrs", "1 hr"
+            r'(\d+(?:\.\d+)?)\s*h\b',        # "2h"
         ]
         
         for pattern in hours_patterns:
             match = re.search(pattern, message_lower)
             if match:
-                return int(match.group(1)) * 3600
+                hours = float(match.group(1))
+                total_seconds += int(hours * 3600)
+                break  # Нашли часы, переходим к минутам
         
-        # Ищем минуты (minutes)
+        # Ищем минуты (minutes) - учитываем множественное число
         minutes_patterns = [
-            r'(\d+)\s*мин',   # "30 минут"
-            r'(\d+)\s*min',   # "30 minutes"
-            r'(\d+)\s*м',     # "30 м"
-            r'(\d+)\s*m(?!s)', # "30m" (но не "30ms")
+            r'(\d+)\s*минут[ыа]?',  # "30 минут", "1 минута", "2 минуты"
+            r'(\d+)\s*minute[s]?',  # "30 minutes", "1 minute"
+            r'(\d+)\s*min[s]?',     # "30 mins"
+            r'(\d+)\s*м\b',         # "30 м"
         ]
         
         for pattern in minutes_patterns:
             match = re.search(pattern, message_lower)
             if match:
-                return int(match.group(1)) * 60
+                minutes = int(match.group(1))
+                total_seconds += minutes * 60
+                break  # Нашли минуты, переходим к секундам
         
-        # Ищем секунды (seconds)
+        # Ищем секунды (seconds) - учитываем множественное число
         seconds_patterns = [
-            r'(\d+)\s*сек',   # "45 секунд"
-            r'(\d+)\s*sec',   # "45 seconds"
-            r'(\d+)\s*с(?!м)', # "45 с" (но не "см")
-            r'(\d+)\s*s(?!m)', # "45s" (но не "sm")
+            r'(\d+)\s*секунд[ыа]?',  # "45 секунд", "1 секунда", "2 секунды"
+            r'(\d+)\s*second[s]?',   # "45 seconds", "1 second"
+            r'(\d+)\s*sec[s]?',      # "45 secs"
+            r'(\d+)\s*с\b',          # "45 с"
         ]
         
         for pattern in seconds_patterns:
             match = re.search(pattern, message_lower)
             if match:
-                return int(match.group(1))
+                seconds = int(match.group(1))
+                total_seconds += seconds
+                break
         
-        return 0
+        # Если нашли хоть что-то, возвращаем
+        if total_seconds > 0:
+            return total_seconds
+        
+        # Если не нашли конкретное время, но есть слова ожидания, возвращаем дефолтное значение
+        if any(keyword in message_lower for keyword in ["подождите", "wait", "зачекайте"]):
+            return 3600  # 1 час по умолчанию
+        
+        return 0  # Не удалось распарсить
     
     @staticmethod
     def _time_to_str(seconds: int) -> str:

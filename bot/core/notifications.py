@@ -184,6 +184,9 @@ class NotificationManager:
         author_nickname: Optional[str] = None
     ):
         """Уведомление о новом сообщении"""
+        from bot.keyboards.keyboards import get_select_template_menu
+        from bot.core.templates import get_template_manager
+        
         # Используем nickname если есть, иначе ID
         display_name = author_nickname or author
         
@@ -202,6 +205,19 @@ class NotificationManager:
                 InlineKeyboardButton(
                     text="💬 Ответить",
                     callback_data=callback_data
+                )
+            ])
+        
+        # Проверяем количество заготовок
+        template_manager = get_template_manager()
+        templates_count = template_manager.count()
+        
+        # Кнопка "Заготовки ответов"
+        if templates_count > 0:
+            buttons.append([
+                InlineKeyboardButton(
+                    text=f"📝 Заготовки ({templates_count})",
+                    callback_data=f"show_templates:{chat_id}"
                 )
             ])
         
@@ -233,14 +249,37 @@ class NotificationManager:
         order_data: dict = None
     ):
         """Уведомление о новом заказе"""
+        from bot.keyboards.keyboards import get_select_template_menu
+        from bot.core.templates import get_template_manager
+        
         # Форматируем сообщение (без статуса)
         message = f"🆔 <b>ID заказа:</b> #{short_id}\n\n"
         message += f"👤 <b>Покупатель:</b> {buyer}\n"
         message += f"📦 <b>Лот:</b> {lot_name}\n"
         message += f"💰 <b>Сумма:</b> {amount} ₽"
         
-        # Создаём только кнопку для открытия заказа
+        # Создаём кнопки
         buttons = []
+        
+        # Получаем chat_id покупателя из order_data если есть
+        chat_id = None
+        if order_data and "buyer" in order_data:
+            buyer_data = order_data["buyer"]
+            if isinstance(buyer_data, dict):
+                chat_id = buyer_data.get("id")
+        
+        # Проверяем количество заготовок
+        template_manager = get_template_manager()
+        templates_count = template_manager.count()
+        
+        # Кнопка "Заготовки ответов" (если есть chat_id)
+        if chat_id and templates_count > 0:
+            buttons.append([
+                InlineKeyboardButton(
+                    text=f"📝 Заготовки ({templates_count})",
+                    callback_data=f"show_templates:{chat_id}"
+                )
+            ])
         
         # Кнопка ссылки на заказ (используем полный order_id)
         order_url = f"https://starvell.com/order/{order_id}"
