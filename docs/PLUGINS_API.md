@@ -16,16 +16,16 @@
 """
 
 # === МЕТАДАННЫЕ ===
-PLUGIN_NAME = "Мой плагин"
-PLUGIN_VERSION = "1.0.0"
-PLUGIN_DESCRIPTION = "Описание плагина"
-PLUGIN_AUTHOR = "Ваше имя"
-PLUGIN_UUID = "unique-plugin-id-12345"  # Уникальный ID
+NAME = "Мой плагин"
+VERSION = "1.0.0"
+DESCRIPTION = "Описание плагина"
+AUTHOR = "Ваше имя"
+UUID = "unique-plugin-id-12345"  # Уникальный ID
 
 # === ФУНКЦИИ-ОБРАБОТЧИКИ ===
 def on_init():
     """Вызывается при загрузке плагина"""
-    print(f"Плагин {PLUGIN_NAME} загружен!")
+    print(f"Плагин {NAME} загружен!")
 
 # === ПРИВЯЗКА К СОБЫТИЯМ ===
 BIND_TO_PRE_INIT = [on_init]
@@ -35,12 +35,11 @@ BIND_TO_PRE_INIT = [on_init]
 
 | Переменная | Тип | Описание |
 |-----------|------|----------|
-| `PLUGIN_NAME` | str | Название плагина |
-| `PLUGIN_VERSION` | str | Версия плагина |
-| `PLUGIN_DESCRIPTION` | str | Описание плагина |
-| `PLUGIN_AUTHOR` | str | Автор плагина |
-| `PLUGIN_UUID` | str | Уникальный ID плагина |
-
+| `NAME` | str | Название плагина |
+| `VERSION` | str | Версия плагина |
+| `DESCRIPTION` | str | Описание плагина |
+| `AUTHOR` | str | Автор плагина |
+| `UUID` | str | Уникальный ID плагина |
 ## События плагинов
 
 ### Жизненный цикл
@@ -232,19 +231,18 @@ import logging
 logger = logging.getLogger(__name__)
 
 # === МЕТАДАННЫЕ ===
-PLUGIN_NAME = "Автоответчик"
-PLUGIN_VERSION = "1.0.0"
-PLUGIN_DESCRIPTION = "Автоматически отвечает на сообщения"
-PLUGIN_AUTHOR = "@kapystus"
-PLUGIN_UUID = "auto-reply-plugin-001"
-
+NAME = "Автоответчик"
+VERSION = "1.0.0"
+DESCRIPTION = "Автоматически отвечает на сообщения"
+AUTHOR = "@kapystus"
+UUID = "auto-reply-plugin-001"
 # === НАСТРОЙКИ ===
 TRIGGER_WORDS = ["помощь", "help", "info"]
 AUTO_REPLY = "Здравствуйте! Я сейчас не могу ответить. Напишите позже."
 
 # === ОБРАБОТЧИКИ ===
 def on_init():
-    logger.info(f"✅ {PLUGIN_NAME} v{PLUGIN_VERSION} загружен")
+    logger.info(f"✅ {NAME} v{VERSION} загружен")
 
 async def on_new_message(message_data, starvell_service=None, *args):
     """Проверяем сообщение и отвечаем если нужно"""
