@@ -67,7 +67,6 @@ user_agent = Mozilla/5.0...
 autoRaise = 0          # Автоматический поднос лотов
 autoDelivery = 0       # Автоматическая выдача товаров
 autoRestore = 0        # Восстановление активности
-locale = ru            # Язык (ru/en)
 ```
 
 ### AutoDelivery конфигурация

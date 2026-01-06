@@ -67,6 +67,7 @@ async def authorize_user(user_id: int):
 # === Команды ===
 
 @router.message(Command("start"))
+@router.message(Command("menu"))
 async def cmd_start(message: Message, state: FSMContext, auto_update, **kwargs):
     """Команда /start"""
     # Загружаем текущий язык

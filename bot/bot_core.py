@@ -54,10 +54,10 @@ async def main():
     
     # Устанавливаем меню команд
     commands = [
-        BotCommand(command="start", description="🏠 Главное меню"),
-        BotCommand(command="update", description="🔄 Обновить бот"),
+        BotCommand(command="menu", description="🏠 Главное меню"),
+        BotCommand(command="update", description="🔄 Обновить бота"),
         BotCommand(command="logs", description="📋 Получить логи"),
-        BotCommand(command="restart", description="🔁 Перезапустить бот"),
+        BotCommand(command="restart", description="🔁 Перезапустить бота"),
     ]
     await bot.set_my_commands(commands)
     logger.info("Меню команд установлено")
