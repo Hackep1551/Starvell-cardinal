@@ -213,8 +213,12 @@ class PluginManager:
         
         logger.info(f"📦 Загружено плагинов: {loaded_count}/{len(plugin_files)}")
     
-    def register_handlers(self):
-        """Зарегистрировать хэндлеры из всех плагинов"""
+    def register_handlers(self, router=None):
+        """
+        Зарегистрировать хэндлеры из всех плагинов
+        
+        :param router: Router для регистрации команд (опционально)
+        """
         for uuid, plugin in self.plugins.items():
             if not plugin.enabled:
                 continue
@@ -249,6 +253,40 @@ class PluginManager:
             
             if hasattr(module, 'BIND_TO_SETTINGS_PAGE'):
                 self.settings_handlers[uuid] = module.BIND_TO_SETTINGS_PAGE
+            
+            # Регистрируем команды плагина
+            if router and hasattr(module, 'COMMANDS'):
+                commands = module.COMMANDS
+                for cmd_name, cmd_data in commands.items():
+                    handler = cmd_data.get('handler')
+                    filters_list = cmd_data.get('filters', [])
+                    
+                    if handler:
+                        router.message.register(handler, *filters_list)
+                        plugin.commands[cmd_name] = cmd_data.get('description', '')
+                        logger.debug(f"Команда /{cmd_name} зарегистрирована из плагина {plugin.name}")
+            
+            # Регистрируем callback хэндлеры плагина
+            if router and hasattr(module, 'CALLBACKS'):
+                callbacks = module.CALLBACKS
+                for callback_name, callback_data in callbacks.items():
+                    handler = callback_data.get('handler')
+                    callback_filter = callback_data.get('filter')
+                    
+                    if handler and callback_filter:
+                        router.callback_query.register(handler, callback_filter)
+                        logger.debug(f"Callback {callback_name} зарегистрирован из плагина {plugin.name}")
+            
+            # Регистрируем текстовые хэндлеры плагина
+            if router and hasattr(module, 'TEXT_HANDLERS'):
+                text_handlers = module.TEXT_HANDLERS
+                for handler_name, handler_data in text_handlers.items():
+                    handler = handler_data.get('handler')
+                    text_filter = handler_data.get('filter')
+                    
+                    if handler and text_filter:
+                        router.message.register(handler, text_filter)
+                        logger.debug(f"Text handler {handler_name} зарегистрирован из плагина {plugin.name}")
             
             logger.debug(f"Хэндлеры плагина {plugin.name} зарегистрированы")
     

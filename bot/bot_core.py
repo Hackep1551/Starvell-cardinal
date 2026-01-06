@@ -111,11 +111,14 @@ async def main():
     # Менеджер плагинов
     plugin_manager = PluginManager()
     plugin_manager.load_plugins()
-    plugin_manager.register_handlers()
     
     # Инициализируем панель управления плагинами
     init_plugins_cp(bot, plugin_manager, router)
     logger.info("Панель управления плагинами инициализирована")
+    
+    # Регистрируем хэндлеры плагинов (включая команды)
+    plugin_manager.register_handlers(router)
+    logger.info("Хэндлеры плагинов зарегистрированы")
     
     try:
         await starvell.start()
