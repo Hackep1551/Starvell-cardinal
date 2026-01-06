@@ -108,7 +108,7 @@ def get_main_menu(update_available: bool = False) -> InlineKeyboardMarkup:
     keyboard.extend([
         [
             InlineKeyboardButton(
-                text="⚙️ Глобальные переключатели",
+                text="⚙️ Глобальные переключатели (в бета-тесте)",
                 callback_data=CBT.GLOBAL_SWITCHES
             ),
         ],
@@ -120,13 +120,13 @@ def get_main_menu(update_available: bool = False) -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton(
-                text="📦 Автовыдача (в бетатесте)",
+                text="📦 Автовыдача (в бета-тесте)",
                 callback_data=CBT.AUTO_DELIVERY
             ),
         ],
         [
             InlineKeyboardButton(
-                text="� Заготовки ответов",
+                text="📋 Заготовки ответов",
                 callback_data=CBT.TEMPLATES
             ),
         ],
