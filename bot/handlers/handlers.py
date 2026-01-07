@@ -161,7 +161,7 @@ async def cmd_changelog(message: Message, **kwargs):
         with open(changelog_file, 'r', encoding='utf-8') as f:
             content = f.read()
         
-        # Убираем markdown заголовок и берем только последние версии
+        # Ищем последние 2 версии
         lines = content.split('\n')
         
         # Пропускаем заголовок файла
@@ -171,37 +171,46 @@ async def cmd_changelog(message: Message, **kwargs):
                 start_idx = i
                 break
         
-        # Берем только 2-3 последние версии (ограничение по длине сообщения)
+        # Берем только 2 последние версии
         version_count = 0
         end_idx = len(lines)
         
         for i in range(start_idx, len(lines)):
             if lines[i].startswith('## ['):
                 version_count += 1
-                if version_count > 2:  # Берем только 2 последние версии
+                if version_count > 2:
                     end_idx = i
                     break
         
-        changelog_text = '\n'.join(lines[start_idx:end_idx])
+        changelog_text = '\n'.join(lines[start_idx:end_idx]).strip()
         
-        # Конвертируем markdown в HTML для Telegram
-        # Заменяем markdown разметку на HTML
-        changelog_html = changelog_text
-        changelog_html = changelog_html.replace('### ', '<b>')
-        changelog_html = changelog_html.replace('\n\n', '</b>\n\n')
-        changelog_html = changelog_html.replace('**', '<b>').replace('**', '</b>')
-        changelog_html = changelog_html.replace('`', '<code>').replace('`', '</code>')
+        # Простое форматирование для Telegram (без сложного HTML)
+        # Заменяем только основные элементы
+        formatted = changelog_text
+        # Заголовки версий
+        formatted = formatted.replace('## [', '\n📦 <b>Версия ')
+        formatted = formatted.replace(']', '</b>')
+        # Подзаголовки
+        formatted = formatted.replace('### Добавлено', '\n✅ <b>Добавлено</b>')
+        formatted = formatted.replace('### Исправлено', '\n🔧 <b>Исправлено</b>')
+        formatted = formatted.replace('### Улучшено', '\n⚡ <b>Улучшено</b>')
+        formatted = formatted.replace('### Документация', '\n📚 <b>Документация</b>')
+        # Жирный текст в markdown
+        import re
+        formatted = re.sub(r'\*\*([^*]+)\*\*', r'<b>\1</b>', formatted)
+        # Код в markdown
+        formatted = re.sub(r'`([^`]+)`', r'<code>\1</code>', formatted)
         
         # Формируем сообщение
-        message_text = f"📝 <b>История изменений</b>\n\n{changelog_html}"
+        message_text = f"📝 <b>История изменений</b>\n{formatted}"
         
         # Telegram ограничивает длину сообщения до 4096 символов
         if len(message_text) > 4000:
-            message_text = message_text[:3950] + "\n\n<i>... (текст обрезан)</i>"
+            message_text = message_text[:3950] + "\n\n<i>... (см. полный файл ниже)</i>"
         
         await message.answer(message_text)
         
-        # Предлагаем скачать полный файл
+        # Отправляем полный файл
         from aiogram.types import FSInputFile
         await message.answer_document(
             FSInputFile(changelog_file),
@@ -213,7 +222,7 @@ async def cmd_changelog(message: Message, **kwargs):
 
 
 @router.message(Command("profile"))
-async def cmd_profile(message: Message, starvell_service, **kwargs):
+async def cmd_profile(message: Message, starvell, **kwargs):
     """Команда /profile - показать профиль продавца"""
     # Проверяем авторизацию
     if not is_user_authorized(message.from_user.id):
@@ -221,7 +230,7 @@ async def cmd_profile(message: Message, starvell_service, **kwargs):
     
     try:
         # Получаем информацию о пользователе
-        user_info = await starvell_service.get_user_info()
+        user_info = await starvell.get_user_info()
         
         if not user_info.get("authorized"):
             await message.answer("❌ Не авторизован в Starvell")
@@ -283,13 +292,13 @@ async def cmd_profile(message: Message, starvell_service, **kwargs):
 
 
 @router.callback_query(F.data == "profile_refresh")
-async def callback_profile_refresh(callback: CallbackQuery, starvell_service, **kwargs):
+async def callback_profile_refresh(callback: CallbackQuery, starvell, **kwargs):
     """Обновить информацию о профиле"""
     await callback.answer("🔄 Обновление...")
     
     try:
         # Получаем информацию о пользователе
-        user_info = await starvell_service.get_user_info()
+        user_info = await starvell.get_user_info()
         
         if not user_info.get("authorized"):
             await callback.message.edit_text("❌ Не авторизован в Starvell")
@@ -351,13 +360,13 @@ async def callback_profile_refresh(callback: CallbackQuery, starvell_service, **
 
 
 @router.callback_query(F.data == "profile_stats")
-async def callback_profile_stats(callback: CallbackQuery, starvell_service, **kwargs):
+async def callback_profile_stats(callback: CallbackQuery, starvell, **kwargs):
     """Показать подробную статистику"""
     await callback.answer("📊 Загрузка статистики...")
     
     try:
         # Получаем заказы
-        orders = await starvell_service.get_orders()
+        orders = await starvell.get_orders()
         
         # Анализируем статистику
         total_orders = len(orders)
@@ -452,11 +461,11 @@ async def callback_profile_stats(callback: CallbackQuery, starvell_service, **kw
 
 
 @router.callback_query(F.data == "profile_back")
-async def callback_profile_back(callback: CallbackQuery, starvell_service, **kwargs):
+async def callback_profile_back(callback: CallbackQuery, starvell, **kwargs):
     """Вернуться к профилю"""
     # Повторно вызываем обновление профиля
     callback.data = "profile_refresh"
-    await callback_profile_refresh(callback, starvell_service=starvell_service)
+    await callback_profile_refresh(callback, starvell=starvell)
 
 
 @router.message(Command("logs"))
