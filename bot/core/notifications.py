@@ -189,10 +189,10 @@ class NotificationManager:
         from bot.keyboards.keyboards import get_select_template_menu
         from bot.core.templates import get_template_manager
         
-        # Используем ID вместо nickname
-        display_name = author
+        # Используем nickname если есть, иначе ID
+        display_name = author_nickname if author_nickname else author
         
-        # Форматируем сообщение: смайлик + ID: message
+        # Форматируем сообщение: смайлик + nickname/ID: message
         message = f"💬 <b>{display_name}:</b> {content}"
         
         # Создаём кнопки

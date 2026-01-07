@@ -408,15 +408,15 @@ async def callback_profile_stats(callback: CallbackQuery, starvell, **kwargs):
             avg_order_value = total_income / completed_orders if completed_orders else 0
             text += f"📈 <b>Средний чек:</b> <code>{avg_order_value:.2f}</code> ₽"
         
-        # Кнопка возврата к профилю
+        # Кнопки управления
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(
-                text="👤 Вернуться к профилю",
-                callback_data="profile_back"
+                text="� Обновить статистику",
+                callback_data="profile_stats"
             )],
             [InlineKeyboardButton(
-                text="🔄 Обновить статистику",
-                callback_data="profile_stats"
+                text="� Вернуться к профилю",
+                callback_data="profile_back"
             )]
         ])
         
@@ -429,9 +429,58 @@ async def callback_profile_stats(callback: CallbackQuery, starvell, **kwargs):
 @router.callback_query(F.data == "profile_back")
 async def callback_profile_back(callback: CallbackQuery, starvell, **kwargs):
     """Вернуться к профилю"""
-    # Повторно вызываем обновление профиля
-    callback.data = "profile_refresh"
-    await callback_profile_refresh(callback, starvell=starvell)
+    await callback.answer()
+    
+    # Получаем информацию о пользователе
+    user_info = await starvell.get_user_info()
+    
+    if not user_info.get("authorized"):
+        await callback.answer("❌ Не авторизован", show_alert=True)
+        return
+    
+    user = user_info.get("user", {})
+    username = user.get("username", "Неизвестно")
+    user_id = user.get("id", "N/A")
+    balance = user.get("balance", 0)
+    frozen = user.get("frozen", 0)
+    avatar_url = user.get("avatarUrl")
+    
+    # Получаем статистику
+    orders = await starvell.get_orders()
+    total_orders = len(orders)
+    active_orders = sum(1 for o in orders if o.get("status") not in ["COMPLETED", "CANCELLED"])
+    
+    # Статистика по отзывам
+    reviews = [o.get("review") for o in orders if o.get("review")]
+    avg_rating = sum(r.get("rating", 0) for r in reviews) / len(reviews) if reviews else 0
+    
+    text = f"👤 <b>Профиль</b>\n\n"
+    text += f"<b>Имя:</b> {username}\n"
+    text += f"<b>ID:</b> <code>{user_id}</code>\n\n"
+    text += f"💰 <b>Баланс:</b> <code>{balance:.2f}</code> ₽\n"
+    text += f"🧊 <b>Замороженные:</b> <code>{frozen:.2f}</code> ₽\n\n"
+    text += f"📦 <b>Заказы:</b>\n"
+    text += f"├ Всего: <code>{total_orders}</code>\n"
+    text += f"└ Активных: <code>{active_orders}</code>\n\n"
+    text += f"⭐ <b>Средняя оценка:</b> <code>{avg_rating:.2f}</code>"
+    
+    # Кнопки
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="📊 Подробная статистика",
+            callback_data="profile_stats"
+        )],
+        [InlineKeyboardButton(
+            text="🔄 Обновить",
+            callback_data="profile_refresh"
+        )],
+        [InlineKeyboardButton(
+            text="🔙 Назад",
+            callback_data=CBT.MAIN
+        )]
+    ])
+    
+    await callback.message.edit_text(text, reply_markup=keyboard)
 
 
 @router.message(Command("logs"))
@@ -745,14 +794,19 @@ async def callback_switch_auto_install(callback: CallbackQuery):
 
 
 @router.callback_query(F.data == CBT.SWITCH_ORDER_CONFIRM)
-async def callback_switch_order_confirm(callback: CallbackQuery):
+async def callback_switch_order_confirm(callback: CallbackQuery, auto_response, **kwargs):
     """Переключить авто-ответ на подтверждение заказа"""
     # Переключаем
     current = BotConfig.ORDER_CONFIRM_RESPONSE_ENABLED()
-    BotConfig.update(**{"AutoResponse.orderConfirm": not current})
+    new_state = not current
+    BotConfig.update(**{"AutoResponse.orderConfirm": new_state})
+    
+    # Если включаем функцию - инициализируем существующие заказы
+    if new_state:
+        await auto_response._initialize_processed_orders()
     
     # Уведомление об изменении
-    status = "включен" if not current else "выключен"
+    status = "включен" if new_state else "выключен"
     await callback.answer(f"Авто-ответ на подтверждение заказа {status}", show_alert=False)
     
     # Обновляем меню
@@ -760,7 +814,7 @@ async def callback_switch_order_confirm(callback: CallbackQuery):
     auto_delivery = BotConfig.AUTO_DELIVERY_ENABLED()
     auto_restore = BotConfig.AUTO_RESTORE_ENABLED()
     auto_install = BotConfig.AUTO_UPDATE_INSTALL()
-    order_confirm = not current
+    order_confirm = new_state
     review_response = BotConfig.REVIEW_RESPONSE_ENABLED()
     
     status_text = "⚙️ <b>Глобальные переключатели</b>\n\nЗдесь вы можете включать и отключать основные функции бота.\n\n"
@@ -772,14 +826,19 @@ async def callback_switch_order_confirm(callback: CallbackQuery):
 
 
 @router.callback_query(F.data == CBT.SWITCH_REVIEW_RESPONSE)
-async def callback_switch_review_response(callback: CallbackQuery):
+async def callback_switch_review_response(callback: CallbackQuery, auto_response, **kwargs):
     """Переключить авто-ответ на отзыв"""
     # Переключаем
     current = BotConfig.REVIEW_RESPONSE_ENABLED()
-    BotConfig.update(**{"AutoResponse.reviewResponse": not current})
+    new_state = not current
+    BotConfig.update(**{"AutoResponse.reviewResponse": new_state})
+    
+    # Если включаем функцию - инициализируем существующие заказы
+    if new_state:
+        await auto_response._initialize_processed_orders()
     
     # Уведомление об изменении
-    status = "включен" if not current else "выключен"
+    status = "включен" if new_state else "выключен"
     await callback.answer(f"Авто-ответ на отзыв {status}", show_alert=False)
     
     # Обновляем меню
@@ -788,7 +847,7 @@ async def callback_switch_review_response(callback: CallbackQuery):
     auto_restore = BotConfig.AUTO_RESTORE_ENABLED()
     auto_install = BotConfig.AUTO_UPDATE_INSTALL()
     order_confirm = BotConfig.ORDER_CONFIRM_RESPONSE_ENABLED()
-    review_response = not current
+    review_response = new_state
     
     status_text = "⚙️ <b>Глобальные переключатели</b>\n\nЗдесь вы можете включать и отключать основные функции бота.\n\n"
     
@@ -868,10 +927,13 @@ async def callback_plugins_menu(callback: CallbackQuery, plugin_manager, **kwarg
     keyboard = get_plugins_menu(plugins_data, offset=0)
     
     enabled_count = sum(1 for p in plugins_data if p["enabled"])
+    disabled_count = len(plugins_data) - enabled_count
     
-    text = "🧩 <b>Плагины</b>\n\n"
-    text += f"Всего плагинов: <code>{len(plugins_data)}</code>\n"
-    text += f"Активно: <code>{enabled_count}</code>"
+    text = "🧩 <b>Управление плагинами</b>\n\n"
+    text += f"🧩 Всего плагинов: <code>{len(plugins_data)}</code>\n"
+    text += f"✅ Активных: <code>{enabled_count}</code>\n"
+    text += f"❌ Отключенных: <code>{disabled_count}</code>\n\n"
+    text += "⚠️ После активации/деактивации/удаления плагина необходимо перезапустить бота! /restart"
     
     await callback.message.edit_text(text, reply_markup=keyboard)
 
