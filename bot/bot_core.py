@@ -55,6 +55,7 @@ async def main():
     # Устанавливаем меню команд
     commands = [
         BotCommand(command="menu", description="🏠 Главное меню"),
+        BotCommand(command="profile", description="👤 Профиль продавца"),
         BotCommand(command="changelog", description="📝 Список изменений"),
         BotCommand(command="update", description="🔄 Обновить бота"),
         BotCommand(command="logs", description="📋 Получить логи"),

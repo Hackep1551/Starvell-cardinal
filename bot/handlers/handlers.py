@@ -212,6 +212,253 @@ async def cmd_changelog(message: Message, **kwargs):
         await message.answer(f"❌ Ошибка при чтении CHANGELOG: {e}")
 
 
+@router.message(Command("profile"))
+async def cmd_profile(message: Message, starvell_service, **kwargs):
+    """Команда /profile - показать профиль продавца"""
+    # Проверяем авторизацию
+    if not is_user_authorized(message.from_user.id):
+        return
+    
+    try:
+        # Получаем информацию о пользователе
+        user_info = await starvell_service.get_user_info()
+        
+        if not user_info.get("authorized"):
+            await message.answer("❌ Не авторизован в Starvell")
+            return
+        
+        user_data = user_info.get("user", {})
+        
+        # Формируем информацию о профиле
+        username = user_data.get("username", "Неизвестно")
+        user_id = user_data.get("id", "?")
+        balance = user_data.get("balance", 0)
+        hold_balance = user_data.get("holdBalance", 0)
+        total_balance = balance + hold_balance
+        
+        # Получаем статус верификации
+        verified = "✅ Верифицирован" if user_data.get("verified") else "❌ Не верифицирован"
+        
+        # Получаем дату регистрации
+        created_at = user_data.get("createdAt", "Неизвестно")
+        if created_at != "Неизвестно":
+            from datetime import datetime
+            try:
+                dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                created_at = dt.strftime("%d.%m.%Y %H:%M")
+            except:
+                pass
+        
+        # Рейтинг и отзывы
+        rating = user_data.get("rating", 0)
+        reviews_count = user_data.get("reviewsCount", 0)
+        
+        text = f"👤 <b>Профиль продавца</b>\n\n"
+        text += f"<b>Имя:</b> {username}\n"
+        text += f"<b>ID:</b> <code>{user_id}</code>\n"
+        text += f"<b>Статус:</b> {verified}\n"
+        text += f"<b>Регистрация:</b> {created_at}\n\n"
+        text += f"💰 <b>Баланс:</b>\n"
+        text += f"├ Доступно: <code>{balance:.2f}</code> ₽\n"
+        text += f"├ Заморожено: <code>{hold_balance:.2f}</code> ₽\n"
+        text += f"└ Всего: <code>{total_balance:.2f}</code> ₽\n\n"
+        text += f"⭐ <b>Рейтинг:</b> {rating:.1f} ({reviews_count} отзывов)"
+        
+        # Кнопка для статистики
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                text="📊 Подробная статистика",
+                callback_data="profile_stats"
+            )],
+            [InlineKeyboardButton(
+                text="🔄 Обновить",
+                callback_data="profile_refresh"
+            )]
+        ])
+        
+        await message.answer(text, reply_markup=keyboard)
+        
+    except Exception as e:
+        await message.answer(f"❌ Ошибка при получении профиля: {e}")
+
+
+@router.callback_query(F.data == "profile_refresh")
+async def callback_profile_refresh(callback: CallbackQuery, starvell_service, **kwargs):
+    """Обновить информацию о профиле"""
+    await callback.answer("🔄 Обновление...")
+    
+    try:
+        # Получаем информацию о пользователе
+        user_info = await starvell_service.get_user_info()
+        
+        if not user_info.get("authorized"):
+            await callback.message.edit_text("❌ Не авторизован в Starvell")
+            return
+        
+        user_data = user_info.get("user", {})
+        
+        # Формируем информацию о профиле
+        username = user_data.get("username", "Неизвестно")
+        user_id = user_data.get("id", "?")
+        balance = user_data.get("balance", 0)
+        hold_balance = user_data.get("holdBalance", 0)
+        total_balance = balance + hold_balance
+        
+        # Получаем статус верификации
+        verified = "✅ Верифицирован" if user_data.get("verified") else "❌ Не верифицирован"
+        
+        # Получаем дату регистрации
+        created_at = user_data.get("createdAt", "Неизвестно")
+        if created_at != "Неизвестно":
+            from datetime import datetime
+            try:
+                dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                created_at = dt.strftime("%d.%m.%Y %H:%M")
+            except:
+                pass
+        
+        # Рейтинг и отзывы
+        rating = user_data.get("rating", 0)
+        reviews_count = user_data.get("reviewsCount", 0)
+        
+        text = f"👤 <b>Профиль продавца</b>\n\n"
+        text += f"<b>Имя:</b> {username}\n"
+        text += f"<b>ID:</b> <code>{user_id}</code>\n"
+        text += f"<b>Статус:</b> {verified}\n"
+        text += f"<b>Регистрация:</b> {created_at}\n\n"
+        text += f"💰 <b>Баланс:</b>\n"
+        text += f"├ Доступно: <code>{balance:.2f}</code> ₽\n"
+        text += f"├ Заморожено: <code>{hold_balance:.2f}</code> ₽\n"
+        text += f"└ Всего: <code>{total_balance:.2f}</code> ₽\n\n"
+        text += f"⭐ <b>Рейтинг:</b> {rating:.1f} ({reviews_count} отзывов)"
+        
+        # Кнопка для статистики
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                text="📊 Подробная статистика",
+                callback_data="profile_stats"
+            )],
+            [InlineKeyboardButton(
+                text="🔄 Обновить",
+                callback_data="profile_refresh"
+            )]
+        ])
+        
+        await callback.message.edit_text(text, reply_markup=keyboard)
+        
+    except Exception as e:
+        await callback.answer(f"❌ Ошибка: {e}", show_alert=True)
+
+
+@router.callback_query(F.data == "profile_stats")
+async def callback_profile_stats(callback: CallbackQuery, starvell_service, **kwargs):
+    """Показать подробную статистику"""
+    await callback.answer("📊 Загрузка статистики...")
+    
+    try:
+        # Получаем заказы
+        orders = await starvell_service.get_orders()
+        
+        # Анализируем статистику
+        total_orders = len(orders)
+        completed_orders = sum(1 for order in orders if order.get("status") == "completed")
+        cancelled_orders = sum(1 for order in orders if order.get("status") == "cancelled")
+        active_orders = sum(1 for order in orders if order.get("status") not in ["completed", "cancelled"])
+        
+        # Считаем доход
+        total_income = sum(order.get("price", 0) for order in orders if order.get("status") == "completed")
+        
+        # Считаем среднюю оценку
+        reviews = [order.get("review", {}) for order in orders if order.get("review")]
+        avg_rating = sum(r.get("rating", 0) for r in reviews) / len(reviews) if reviews else 0
+        
+        # Статистика по датам
+        from datetime import datetime, timedelta
+        now = datetime.now()
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        week_start = today_start - timedelta(days=7)
+        month_start = today_start - timedelta(days=30)
+        
+        orders_today = 0
+        orders_week = 0
+        orders_month = 0
+        income_today = 0
+        income_week = 0
+        income_month = 0
+        
+        for order in orders:
+            if order.get("status") != "completed":
+                continue
+                
+            created_at = order.get("createdAt")
+            if not created_at:
+                continue
+                
+            try:
+                order_date = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                order_price = order.get("price", 0)
+                
+                if order_date >= today_start:
+                    orders_today += 1
+                    income_today += order_price
+                    
+                if order_date >= week_start:
+                    orders_week += 1
+                    income_week += order_price
+                    
+                if order_date >= month_start:
+                    orders_month += 1
+                    income_month += order_price
+            except:
+                continue
+        
+        text = f"📊 <b>Подробная статистика</b>\n\n"
+        text += f"📦 <b>Заказы:</b>\n"
+        text += f"├ Всего: <code>{total_orders}</code>\n"
+        text += f"├ Завершено: <code>{completed_orders}</code> ({completed_orders/total_orders*100 if total_orders else 0:.1f}%)\n"
+        text += f"├ Активных: <code>{active_orders}</code>\n"
+        text += f"└ Отменено: <code>{cancelled_orders}</code>\n\n"
+        
+        text += f"💰 <b>Доход (завершенные):</b>\n"
+        text += f"├ За сегодня: <code>{income_today:.2f}</code> ₽ ({orders_today} зак.)\n"
+        text += f"├ За неделю: <code>{income_week:.2f}</code> ₽ ({orders_week} зак.)\n"
+        text += f"├ За месяц: <code>{income_month:.2f}</code> ₽ ({orders_month} зак.)\n"
+        text += f"└ Всего: <code>{total_income:.2f}</code> ₽\n\n"
+        
+        text += f"⭐ <b>Отзывы:</b>\n"
+        text += f"├ Средняя оценка: <code>{avg_rating:.2f}</code>\n"
+        text += f"└ Всего отзывов: <code>{len(reviews)}</code>\n\n"
+        
+        if total_orders > 0:
+            avg_order_value = total_income / completed_orders if completed_orders else 0
+            text += f"📈 <b>Средний чек:</b> <code>{avg_order_value:.2f}</code> ₽"
+        
+        # Кнопка возврата к профилю
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                text="👤 Вернуться к профилю",
+                callback_data="profile_back"
+            )],
+            [InlineKeyboardButton(
+                text="🔄 Обновить статистику",
+                callback_data="profile_stats"
+            )]
+        ])
+        
+        await callback.message.edit_text(text, reply_markup=keyboard)
+        
+    except Exception as e:
+        await callback.answer(f"❌ Ошибка: {e}", show_alert=True)
+
+
+@router.callback_query(F.data == "profile_back")
+async def callback_profile_back(callback: CallbackQuery, starvell_service, **kwargs):
+    """Вернуться к профилю"""
+    # Повторно вызываем обновление профиля
+    callback.data = "profile_refresh"
+    await callback_profile_refresh(callback, starvell_service=starvell_service)
+
+
 @router.message(Command("logs"))
 async def cmd_logs(message: Message, **kwargs):
     """Команда /logs - отправить логи"""
