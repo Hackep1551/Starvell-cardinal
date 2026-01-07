@@ -46,7 +46,7 @@ class KeepAliveService:
         
         # Запускаем фоновую задачу
         self._task = asyncio.create_task(self._keep_alive_loop())
-        logger.info(f"✅ Сервис вечного онлайна запущен (интервал: {self._interval}с)")
+        logger.debug(f"Сервис вечного онлайна запущен (интервал: {self._interval}с)")
         
     async def stop(self):
         """Остановить сервис"""

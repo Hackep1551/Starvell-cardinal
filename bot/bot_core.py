@@ -192,10 +192,28 @@ async def main():
     # Уведомляем админов о запуске
     if BotConfig.NOTIFY_BOT_START():
         try:
+            from datetime import datetime
+            from version import VERSION
+            
+            # Формируем детальное уведомление
+            current_time = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
+            
+            message = (
+                f"<b>Аккаунт:</b> {user.get('username', 'Неизвестно')}\n"
+                f"<b>ID:</b> <code>{user.get('id', 'N/A')}</code>\n\n"
+                f"<b>Версия бота:</b> <code>{VERSION}</code>\n"
+                f"<b>Время запуска:</b> <code>{current_time}</code>\n\n"
+                f"<b>Статус сервисов:</b>\n"
+                f"├ 🔄 Автоподнятие: {'✅' if BotConfig.AUTO_BUMP_ENABLED() else '❌'}\n"
+                f"├ 🌐 Keep Alive: {'✅' if BotConfig.KEEP_ALIVE_ENABLED() else '❌'}\n"
+                f"├ 📦 Авто-выдача: {'✅' if BotConfig.AUTO_DELIVERY_ENABLED() else '❌'}\n"
+                f"├ ♻️ Авто-восстановление: {'✅' if BotConfig.AUTO_RESTORE_ENABLED() else '❌'}\n"
+                f"└ 🤖 Авто-ответы: {'✅' if BotConfig.ORDER_CONFIRM_RESPONSE_ENABLED() or BotConfig.REVIEW_RESPONSE_ENABLED() else '❌'}\n"
+            )
+            
             await notifications.notify_all_admins(
                 NotificationType.BOT_STARTED,
-                f"Аккаунт: {user.get('username')}\n"
-                f"ID: {user.get('id')}\n",
+                message,
                 force=False
             )
         except Exception as e:

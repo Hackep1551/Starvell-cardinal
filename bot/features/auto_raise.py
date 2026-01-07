@@ -25,6 +25,8 @@ class AutoRaiseService:
         self.raised_time: Dict[int, int] = {}  # game_id -> timestamp последнего поднятия
         self._task: asyncio.Task = None
         self._force_check = asyncio.Event()  # Событие для принудительной проверки
+        self._last_categories: Dict[int, List[int]] = {}  # game_id -> список категорий (для отслеживания изменений)
+        self._initial_check_done = False  # Флаг первой проверки
         
     async def start(self):
         """Запустить сервис"""
@@ -147,7 +149,13 @@ class AutoRaiseService:
         # Для сбора времени следующих поднятий всех игр
         all_next_times = []
         
-        logger.info("🔍 Начинаю автоматическое определение категорий...")
+        # Определяем, нужно ли логировать подробно
+        # Логируем только при: 1) первой проверке, 2) обнаружении новых категорий
+        is_first_check = not self._initial_check_done
+        verbose_logging = is_first_check
+        
+        if verbose_logging:
+            logger.info("🔍 Начинаю автоматическое определение категорий...")
         
         try:
             # Получаем ID пользователя
@@ -158,26 +166,28 @@ class AutoRaiseService:
                 logger.error("❌ Не удалось получить ID пользователя")
                 return current_time + 300  # Попробуем через 5 минут
             
-            # Получаем список лотов для вывода названий
-            offers = await self.starvell.api.get_user_offers(user_id)
-            
-            if offers:
-                logger.info(f"📦 Найдено лотов: {len(offers)}")
-                for idx, offer in enumerate(offers, 1):  # Показываем первые 5
-                    title = offer.get('title', 'Без названия')
-                    logger.info(f"  {idx}. {title}")
-                if len(offers) > 5:
-                    logger.info(f"  ... и ещё {len(offers) - 5} лотов")
-            
             # Получаем все категории пользователя автоматически
             game_categories = await self.starvell.api.get_user_categories(user_id)
             
             if not game_categories:
                 logger.warning("📭 Не найдено категорий с лотами")
-                logger.warning(f"� Проверьте профиль: https://starvell.com/users/{user_id}")
+                logger.warning(f"👉 Проверьте профиль: https://starvell.com/users/{user_id}")
                 return current_time + 600  # Попробуем через 10 минут
             
-            logger.info(f"✅ Найдено игр с лотами: {len(game_categories)}")
+            # Проверяем, изменились ли категории
+            categories_changed = False
+            for game_id, categories in game_categories.items():
+                if game_id not in self._last_categories or self._last_categories[game_id] != categories:
+                    categories_changed = True
+                    self._last_categories[game_id] = categories
+            
+            # Если категории изменились, логируем подробно
+            if categories_changed and not verbose_logging:
+                verbose_logging = True
+                logger.info("🆕 Обнаружены новые категории!")
+            
+            if verbose_logging:
+                logger.info(f"✅ Найдено игр с лотами: {len(game_categories)}")
             
             # Поднимаем лоты для каждой игры
             for game_id, categories in game_categories.items():
@@ -188,16 +198,21 @@ class AutoRaiseService:
                 
                 if saved_time and saved_time > current_time:
                     remaining = saved_time - current_time
-                    logger.info(f"⏰ Игра {game_id}: поднятие через {self._time_to_str(remaining)}")
+                    if verbose_logging:
+                        logger.info(f"⏰ Игра {game_id}: поднятие через {self._time_to_str(remaining)}")
                     all_next_times.append(saved_time)
                     continue
                 
                 # Поднимаем лоты этой игры
-                bump_next_time = await self._raise_game_lots(game_id, categories, interval, current_time)
+                bump_next_time = await self._raise_game_lots(game_id, categories, interval, current_time, verbose_logging)
                 
                 # Добавляем в список времен
                 if bump_next_time:
                     all_next_times.append(bump_next_time)
+            
+            # Помечаем, что первая проверка завершена
+            if is_first_check:
+                self._initial_check_done = True
                 
         except Exception as e:
             logger.error(f"❌ Ошибка в процессе поднятия: {e}", exc_info=True)
@@ -206,7 +221,8 @@ class AutoRaiseService:
         # Оптимизация: группируем близкие по времени поднятия
         if all_next_times:
             next_call = self._optimize_next_call(all_next_times, current_time)
-            logger.info(f"📅 Следующая проверка через {self._time_to_str(next_call - current_time)}")
+            if verbose_logging:
+                logger.info(f"📅 Следующая проверка через {self._time_to_str(next_call - current_time)}")
             return next_call
         else:
             # Если нет запланированных поднятий, используем стандартный интервал
@@ -270,7 +286,7 @@ class AutoRaiseService:
         
         return optimized_time
     
-    async def _raise_game_lots(self, game_id: int, categories: List[int], interval: int, current_time: int) -> int:
+    async def _raise_game_lots(self, game_id: int, categories: List[int], interval: int, current_time: int, verbose_logging: bool = False) -> int:
         """
         Поднять лоты конкретной игры
         
@@ -279,6 +295,7 @@ class AutoRaiseService:
             categories: Список ID категорий
             interval: Интервал между поднятиями
             current_time: Текущее время
+            verbose_logging: Флаг подробного логирования
             
         Returns:
             Timestamp следующего поднятия
@@ -349,11 +366,12 @@ class AutoRaiseService:
                     # Округляем время до получаса вверх для вывода
                     rounded_wait = ((wait_time + 1799) // 1800) * 1800
                     
-                    logger.debug(
-                        f"⏳ Лоты игры ID={game_id} уже поднимались недавно."
-                    )
-                    logger.debug(f"📨 API сообщает: \"{error_msg}\"")
-                    logger.debug(f"⏰ Следующее поднятие через ~{self._time_to_str(rounded_wait)}")
+                    if verbose_logging:
+                        logger.debug(
+                            f"⏳ Лоты игры ID={game_id} уже поднимались недавно."
+                        )
+                        logger.debug(f"📨 API сообщает: \"{error_msg}\"")
+                        logger.debug(f"⏰ Следующее поднятие через ~{self._time_to_str(rounded_wait)}")
                     
                     # Устанавливаем время следующего поднятия
                     next_time = current_time + wait_time

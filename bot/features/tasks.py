@@ -15,8 +15,11 @@ from bot.core.storage import Database
 
 logger = logging.getLogger(__name__)
 
-# Отключаем подробное логирование планировщика
-logging.getLogger('apscheduler').setLevel(logging.WARNING)
+# Настраиваем уровень логирования планировщика в зависимости от режима DEBUG
+if BotConfig.DEBUG():
+    logging.getLogger('apscheduler').setLevel(logging.WARNING)
+else:
+    logging.getLogger('apscheduler').setLevel(logging.ERROR)
 
 
 class BackgroundTasks:
@@ -130,6 +133,13 @@ class BackgroundTasks:
                 
                 # Пропускаем сообщения без контента
                 if not content:
+                    continue
+                
+                # Проверяем черный список по ID
+                config = get_config_manager()
+                blacklist_section = f"Blacklist.{author_id}"
+                if config._config.has_section(blacklist_section):
+                    logger.debug(f"Сообщение от пользователя {author_id} игнорируется (в черном списке)")
                     continue
                 
                 # Получаем nickname из данных чата

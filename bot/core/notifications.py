@@ -189,10 +189,10 @@ class NotificationManager:
         from bot.keyboards.keyboards import get_select_template_menu
         from bot.core.templates import get_template_manager
         
-        # Используем nickname если есть, иначе ID
-        display_name = author_nickname or author
+        # Используем ID вместо nickname
+        display_name = author
         
-        # Форматируем сообщение: смайлик + Nickname: message
+        # Форматируем сообщение: смайлик + ID: message
         message = f"💬 <b>{display_name}:</b> {content}"
         
         # Создаём кнопки
@@ -321,7 +321,7 @@ class NotificationManager:
         await self.notify_all_admins(
             NotificationType.LOT_BUMPED,
             message,
-            force=False
+            force=False  # Используем настройку NOTIFY_LOT_BUMP
         )
     
     async def notify_lot_action(
@@ -403,11 +403,10 @@ class NotificationManager:
         """Уведомление о доступном обновлении"""
         message = (
             f"╔══════════════════════╗\n"
-            f"║  <b>ДОСТУПНО ОБНОВЛЕНИЕ!</b>     ║\n"
+            f"║  <b>ДОСТУПНО ОБНОВЛЕНИЕ!</b>       ║\n"
             f"╚══════════════════════╝\n\n"
             f"📌 <b>Текущая версия:</b> <code>{current_version}</code>\n"
             f"✨ <b>Новая версия:</b> <code>{latest_version}</code>\n\n"
-            f"Используйте команду /update для обновления"
         )
         
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
