@@ -23,6 +23,7 @@ from bot.features.auto_restore import AutoRestoreService
 from bot.features.auto_raise import AutoRaiseService
 from bot.features.auto_update import AutoUpdateService
 from bot.features.keep_alive import KeepAliveService
+from bot.features.auto_response import AutoResponseService
 from bot.plugins import PluginManager, init_plugins_cp
 
 
@@ -110,6 +111,9 @@ async def main():
     # Сервис вечного онлайна
     keep_alive = KeepAliveService(starvell)
     
+    # Сервис автоответов
+    auto_response = AutoResponseService(starvell, db)
+    
     # Менеджер плагинов
     plugin_manager = PluginManager()
     plugin_manager.load_plugins()
@@ -132,6 +136,7 @@ async def main():
         await auto_raise.start()
         await auto_update.start()
         await keep_alive.start()
+        await auto_response.start()
         
         # Запускаем хэндлеры инициализации плагинов
         plugin_manager.run_handlers(plugin_manager.init_handlers, bot, starvell, db, plugin_manager)
@@ -151,6 +156,7 @@ async def main():
     except Exception as e:
         logger.error(f"Ошибка при подключении к Starvell: {e}")
         logger.exception("Детальная информация об ошибке:")
+        await auto_response.stop()
         await keep_alive.stop()
         await auto_update.stop()
         await auto_raise.stop()
@@ -175,11 +181,12 @@ async def main():
         "auto_restore": auto_restore,
         "auto_raise": auto_raise,
         "auto_update": auto_update,
+        "auto_response": auto_response,
         "plugin_manager": plugin_manager,
     })
     
     # Фоновые задачи
-    tasks = BackgroundTasks(bot, starvell, db, notifications)
+    tasks = BackgroundTasks(bot, starvell, db, notifications, auto_response)
     tasks.start()
     
     # Уведомляем админов о запуске
