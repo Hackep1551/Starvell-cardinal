@@ -140,6 +140,78 @@ async def cmd_update(message: Message, auto_update, **kwargs):
         )
 
 
+@router.message(Command("changelog"))
+async def cmd_changelog(message: Message, **kwargs):
+    """Команда /changelog - показать список изменений"""
+    # Проверяем авторизацию
+    if not is_user_authorized(message.from_user.id):
+        return
+    
+    from pathlib import Path
+    
+    changelog_file = Path("CHANGELOG.md")
+    
+    # Проверяем существование файла
+    if not changelog_file.exists():
+        await message.answer("❌ Файл CHANGELOG.md не найден")
+        return
+    
+    try:
+        # Читаем файл
+        with open(changelog_file, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # Убираем markdown заголовок и берем только последние версии
+        lines = content.split('\n')
+        
+        # Пропускаем заголовок файла
+        start_idx = 0
+        for i, line in enumerate(lines):
+            if line.startswith('## ['):  # Начало версии
+                start_idx = i
+                break
+        
+        # Берем только 2-3 последние версии (ограничение по длине сообщения)
+        version_count = 0
+        end_idx = len(lines)
+        
+        for i in range(start_idx, len(lines)):
+            if lines[i].startswith('## ['):
+                version_count += 1
+                if version_count > 2:  # Берем только 2 последние версии
+                    end_idx = i
+                    break
+        
+        changelog_text = '\n'.join(lines[start_idx:end_idx])
+        
+        # Конвертируем markdown в HTML для Telegram
+        # Заменяем markdown разметку на HTML
+        changelog_html = changelog_text
+        changelog_html = changelog_html.replace('### ', '<b>')
+        changelog_html = changelog_html.replace('\n\n', '</b>\n\n')
+        changelog_html = changelog_html.replace('**', '<b>').replace('**', '</b>')
+        changelog_html = changelog_html.replace('`', '<code>').replace('`', '</code>')
+        
+        # Формируем сообщение
+        message_text = f"📝 <b>История изменений</b>\n\n{changelog_html}"
+        
+        # Telegram ограничивает длину сообщения до 4096 символов
+        if len(message_text) > 4000:
+            message_text = message_text[:3950] + "\n\n<i>... (текст обрезан)</i>"
+        
+        await message.answer(message_text)
+        
+        # Предлагаем скачать полный файл
+        from aiogram.types import FSInputFile
+        await message.answer_document(
+            FSInputFile(changelog_file),
+            caption="📄 Полный список изменений"
+        )
+        
+    except Exception as e:
+        await message.answer(f"❌ Ошибка при чтении CHANGELOG: {e}")
+
+
 @router.message(Command("logs"))
 async def cmd_logs(message: Message, **kwargs):
     """Команда /logs - отправить логи"""

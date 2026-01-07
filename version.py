@@ -2,7 +2,7 @@
 Версия Starvell Cardinal
 """
 
-VERSION = "0.0.7"
+VERSION = "0.0.9"
 GITHUB_REPO = "Hackep1551/Starvell-cardinal"
 VERSION_URL = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/version.py"
 

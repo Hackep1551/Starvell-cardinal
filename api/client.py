@@ -172,6 +172,37 @@ class StarAPI:
             data={"chatId": chat_id, "content": content},
             referer=f"{self.config.BASE_URL}/chat/{chat_id}",
         )
+    
+    async def find_chat_by_user_id(self, user_id: str) -> Optional[str]:
+        """
+        Найти ID чата с конкретным пользователем
+        
+        Args:
+            user_id: ID пользователя для поиска
+            
+        Returns:
+            str | None: ID чата если найден, иначе None
+        """
+        try:
+            chats_data = await self.get_chats()
+            chats = chats_data.get("pageProps", {}).get("chats", [])
+            
+            for chat in chats:
+                # Проверяем companion (для личных чатов)
+                companion = chat.get("companion", {})
+                if companion and str(companion.get("id")) == str(user_id):
+                    return chat.get("id")
+                
+                # Проверяем members (для групповых чатов)
+                members = chat.get("members", [])
+                for member in members:
+                    if str(member.get("id")) == str(user_id):
+                        return chat.get("id")
+            
+            return None
+        except Exception as e:
+            logger.error(f"Ошибка поиска чата для пользователя {user_id}: {e}")
+            return None
         
     # ==================== Заказы ====================
     
@@ -215,6 +246,22 @@ class StarAPI:
             f"{self.config.API_URL}/orders/confirm",
             data={"orderId": order_id},
             referer=f"{self.config.BASE_URL}/order/{order_id}",
+            include_sid=True,
+        )
+    
+    async def get_order_details(self, order_id: str) -> Dict[str, Any]:
+        """
+        Получить детальную информацию о заказе
+        
+        Args:
+            order_id: ID заказа (например, 019b95a8-df7d-683c-17a9-3889985947d6)
+            
+        Returns:
+            dict: Полные данные заказа включая chat_id, buyer, lot и т.д.
+        """
+        return await self._get_next_data(
+            f"order/{order_id}.json",
+            params=f"?order_id={order_id}",
             include_sid=True,
         )
         

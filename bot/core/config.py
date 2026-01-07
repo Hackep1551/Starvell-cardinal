@@ -61,10 +61,10 @@ class ConfigManager:
             'checkInterval': '30',
             'newMessages': 'true',
             'newOrders': 'true',
-            'lotRestore': 'true',
-            'botStart': 'true',
-            'lotDeactivate': 'true',
-            'lotBump': 'true'
+            'lotRestore': 'false',
+            'botStart': 'false',
+            'lotDeactivate': 'false',
+            'lotBump': 'false'
         }
         
         self._config['AutoResponse'] = {
