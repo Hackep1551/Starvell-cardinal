@@ -1,39 +1,52 @@
 @echo off
-chcp 65001 >nul
-cls
-echo ================================
-echo Starvell Telegram Bot
-echo ================================
+chcp 65001 > nul
+cd /d "%~dp0"
+
+echo ========================================
+echo   Starvell Cardinal Bot
+echo ========================================
 echo.
 
-REM Проверка Python
+REM Check Python
 python --version >nul 2>&1
-if errorlevel 1 (
-    echo [ERROR] Python не установлен!
-    echo Скачайте Python с https://www.python.org/
+if %errorlevel% neq 0 (
+    echo [ERROR] Python not found!
+    echo Please install Python 3.11 or higher
     pause
     exit /b 1
 )
 
-REM Запуск бота
-echo Запуск бота...
+REM Check dependencies
+if not exist "venv\" (
+    echo [INFO] Creating virtual environment...
+    python -m venv venv
+    if %errorlevel% neq 0 (
+        echo [ERROR] Failed to create virtual environment
+        pause
+        exit /b 1
+    )
+)
+
+echo [INFO] Activating virtual environment...
+call venv\Scripts\activate.bat
+
+echo [INFO] Installing dependencies...
+pip install -r requirements.txt --quiet
+if %errorlevel% neq 0 (
+    echo [ERROR] Failed to install dependencies
+    pause
+    exit /b 1
+)
+
 echo.
+echo [SUCCESS] Starting bot...
+echo ========================================
+echo.
+
 python main.py
 
-pause
-
-echo [INFO] Запуск бота...
-echo.
-
-python -m bot.main
-
-if errorlevel 1 (
+if %errorlevel% neq 0 (
     echo.
-    echo [ERROR] Бот завершился с ошибкой!
-    echo Проверьте файл bot.log для деталей
-    echo.
+    echo [ERROR] Bot crashed with error code: %errorlevel%
     pause
-    exit /b 1
 )
-
-pause
