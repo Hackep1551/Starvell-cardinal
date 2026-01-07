@@ -8,27 +8,21 @@ echo.
 
 python --version >nul 2>&1
 if errorlevel 1 (
-    echo [ERROR] Python не установлен!
-    echo Скачайте Python с https://www.python.org/
+    echo [ERROR] Python is not installed!
+    echo Download Python from https://www.python.org/
     pause
     exit /b 1
 )
 
-echo Запуск бота...
+echo [INFO] Starting bot...
 echo.
+
 python main.py
-
-pause
-
-echo [INFO] Запуск бота...
-echo.
-
-python -m bot.main
 
 if errorlevel 1 (
     echo.
-    echo [ERROR] Бот завершился с ошибкой!
-    echo Проверьте файл bot.log для деталей
+    echo [ERROR] Bot crashed!
+    echo Check bot.log for details
     echo.
     pause
     exit /b 1
