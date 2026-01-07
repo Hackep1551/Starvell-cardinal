@@ -38,10 +38,13 @@ async def show_plugins_list(callback: CallbackQuery, plugin_manager, **kwargs):
         keyboard = get_plugins_menu(plugins_data, offset)
         
         enabled_count = sum(1 for p in plugins_data if p["enabled"])
+        disabled_count = len(plugins_data) - enabled_count
         
-        text = "🧩 <b>Плагины</b>\n\n"
-        text += f"Всего плагинов: <code>{len(plugins_data)}</code>\n"
-        text += f"Активно: <code>{enabled_count}</code>"
+        text = "🧩 <b>Управление плагинами</b>\n\n"
+        text += f"🧩 Всего плагинов: <code>{len(plugins_data)}</code>\n"
+        text += f"✅ Активных: <code>{enabled_count}</code>\n"
+        text += f"❌ Отключенных: <code>{disabled_count}</code>\n\n"
+        text += "⚠️ После активации/деактивации/удаления плагина необходимо перезапустить бота! /restart"
         
         await callback.message.edit_text(
             text,
@@ -117,7 +120,8 @@ async def toggle_plugin(callback: CallbackQuery, plugin_manager, **kwargs):
         text += f"<b>Автор:</b> {plugin.author}\n"
         text += f"<b>UUID:</b> <code>{uuid}</code>\n\n"
         text += f"<b>Описание:</b>\n{plugin.description}\n\n"
-        text += f"<b>Статус:</b> {'✅ Включен' if plugin.enabled else '❌ Выключен'}"
+        text += f"<b>Статус:</b> {'✅ Включен' if plugin.enabled else '❌ Выключен'}\n\n"
+        text += "⚠️ После активации/деактивации/удаления плагина необходимо перезапустить бота! /restart"
         
         keyboard = get_plugin_info_menu(uuid, offset, plugin.enabled)
         

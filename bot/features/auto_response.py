@@ -24,11 +24,47 @@ class AutoResponseService:
         
     async def start(self):
         """Запуск сервиса"""
+        # Загружаем все текущие заказы как уже обработанные
+        # Это предотвращает отправку автоответов на старые заказы при первом запуске
+        await self._initialize_processed_orders()
         logger.info("Сервис автоответов запущен")
         
     async def stop(self):
         """Остановка сервиса"""
         logger.info("Сервис автоответов остановлен")
+    
+    async def _initialize_processed_orders(self):
+        """
+        Инициализация: загружаем все текущие заказы как уже обработанные
+        Это предотвращает отправку автоответов на старые заказы при включении функции
+        """
+        try:
+            logger.info("Инициализация автоответов: загрузка существующих заказов...")
+            
+            # Получаем все заказы
+            orders = await self.starvell.get_orders()
+            
+            for order in orders:
+                order_id = order.get("id")
+                if not order_id:
+                    continue
+                
+                status = order.get("status", "")
+                review = order.get("review")
+                
+                # Добавляем завершённые заказы в обработанные
+                if status == "COMPLETED" or status == "completed":
+                    self._confirmed_orders.add(order_id)
+                
+                # Добавляем заказы с отзывами в обработанные
+                if review:
+                    self._reviewed_orders.add(order_id)
+            
+            logger.info(f"Загружено {len(self._confirmed_orders)} завершённых заказов и {len(self._reviewed_orders)} отзывов")
+            logger.info("✅ Автоответы будут отправляться только на новые заказы")
+            
+        except Exception as e:
+            logger.error(f"Ошибка при инициализации обработанных заказов: {e}", exc_info=True)
         
     async def check_and_respond(self):
         """

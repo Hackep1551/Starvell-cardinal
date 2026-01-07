@@ -312,7 +312,8 @@ def init_plugins_cp(bot, plugin_manager: PluginManager, router, *args):
         
         await message.answer(
             f"✅ Плагин `{message.document.file_name}` загружен!\n\n"
-            "⚠️ *Перезапустите бота* для применения изменений.",
+            "⚠️ После активации/деактивации/удаления плагина необходимо перезапустить бота!\n\n"
+            "Используйте команду: /restart",
             reply_markup=keyboard,
             parse_mode="Markdown"
         )
