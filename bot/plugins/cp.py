@@ -235,12 +235,14 @@ def init_plugins_cp(bot, plugin_manager: PluginManager, router, *args):
         else:
             await callback.answer("❌ Ошибка при удалении плагина", show_alert=True)
     
-    @router.callback_query(F.data.startswith(f"{CBT.UPLOAD_PLUGIN}:"))
+    @router.callback_query(F.data.startswith(CBT.UPLOAD_PLUGIN))
     async def act_upload_plugin(callback: CallbackQuery, state: FSMContext):
         """Активирует режим загрузки плагина"""
         await callback.answer()
         
-        offset = int(callback.data.split(":")[1])
+        # Получаем offset из callback data или используем 0 по умолчанию
+        parts = callback.data.split(":")
+        offset = int(parts[1]) if len(parts) > 1 else 0
         
         from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
         

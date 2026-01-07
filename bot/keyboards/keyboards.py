@@ -676,7 +676,7 @@ def get_plugins_menu(plugins: list, offset: int = 0) -> InlineKeyboardMarkup:
         [
             InlineKeyboardButton(
                 text="📤 Загрузить плагин",
-                callback_data="upload_plugin"
+                callback_data=f"upload_plugin:{offset}"
             )
         ],
         [

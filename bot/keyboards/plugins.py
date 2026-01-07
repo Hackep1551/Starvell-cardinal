@@ -49,7 +49,7 @@ def plugins_list(plugin_manager, CBT, offset: int = 0) -> InlineKeyboardMarkup:
     keyboard.append([
         InlineKeyboardButton(
             text="⤴️ Загрузить плагин",
-            callback_data=CBT.UPLOAD_PLUGIN
+            callback_data=f"{CBT.UPLOAD_PLUGIN}:{offset}"
         )
     ])
     
