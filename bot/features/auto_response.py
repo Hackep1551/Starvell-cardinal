@@ -4,7 +4,7 @@
 
 import logging
 from typing import Dict, Set, Optional
-from bot.core.config import BotConfig
+from bot.core.config import BotConfig, get_config_manager
 from bot.core.services import StarvellService
 from bot.core.storage import Database
 
@@ -76,6 +76,16 @@ class AutoResponseService:
         if order_id in self._confirmed_orders:
             return
         
+        # Проверяем черный список (по buyer ID если есть)
+        buyer_id = order.get("buyerId") or order.get("buyer_id")
+        if buyer_id:
+            config = get_config_manager()
+            blacklist_section = f"Blacklist.{buyer_id}"
+            if config._config.has_section(blacklist_section):
+                logger.debug(f"Автоответ на заказ {order_id[:8]} пропущен (покупатель {buyer_id} в ЧС)")
+                self._confirmed_orders.add(order_id)  # Помечаем как обработанный
+                return
+        
         try:
             # Получаем детали заказа для получения chat_id
             order_details = await self.starvell.get_order_details(order_id)
@@ -125,6 +135,16 @@ class AutoResponseService:
         # Проверяем, не отправляли ли уже ответ
         if order_id in self._reviewed_orders:
             return
+        
+        # Проверяем черный список (по buyer ID если есть)
+        buyer_id = order.get("buyerId") or order.get("buyer_id")
+        if buyer_id:
+            config = get_config_manager()
+            blacklist_section = f"Blacklist.{buyer_id}"
+            if config._config.has_section(blacklist_section):
+                logger.debug(f"Автоответ на отзыв заказа {order_id[:8]} пропущен (покупатель {buyer_id} в ЧС)")
+                self._reviewed_orders.add(order_id)  # Помечаем как обработанный
+                return
         
         try:
             # Получаем детали заказа для получения chat_id
