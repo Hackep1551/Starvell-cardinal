@@ -148,6 +148,7 @@ async def cmd_changelog(message: Message, **kwargs):
         return
     
     from pathlib import Path
+    from aiogram.types import FSInputFile
     
     changelog_file = Path("CHANGELOG.md")
     
@@ -157,64 +158,17 @@ async def cmd_changelog(message: Message, **kwargs):
         return
     
     try:
-        # Читаем файл
-        with open(changelog_file, 'r', encoding='utf-8') as f:
-            content = f.read()
-        
-        # Ищем последние 2 версии
-        lines = content.split('\n')
-        
-        # Пропускаем заголовок файла
-        start_idx = 0
-        for i, line in enumerate(lines):
-            if line.startswith('## ['):  # Начало версии
-                start_idx = i
-                break
-        
-        # Берем только 2 последние версии
-        version_count = 0
-        end_idx = len(lines)
-        
-        for i in range(start_idx, len(lines)):
-            if lines[i].startswith('## ['):
-                version_count += 1
-                if version_count > 2:
-                    end_idx = i
-                    break
-        
-        changelog_text = '\n'.join(lines[start_idx:end_idx]).strip()
-        
-        # Простое форматирование для Telegram (без сложного HTML)
-        # Заменяем только основные элементы
-        formatted = changelog_text
-        # Заголовки версий
-        formatted = formatted.replace('## [', '\n📦 <b>Версия ')
-        formatted = formatted.replace(']', '</b>')
-        # Подзаголовки
-        formatted = formatted.replace('### Добавлено', '\n✅ <b>Добавлено</b>')
-        formatted = formatted.replace('### Исправлено', '\n🔧 <b>Исправлено</b>')
-        formatted = formatted.replace('### Улучшено', '\n⚡ <b>Улучшено</b>')
-        formatted = formatted.replace('### Документация', '\n📚 <b>Документация</b>')
-        # Жирный текст в markdown
-        import re
-        formatted = re.sub(r'\*\*([^*]+)\*\*', r'<b>\1</b>', formatted)
-        # Код в markdown
-        formatted = re.sub(r'`([^`]+)`', r'<code>\1</code>', formatted)
-        
-        # Формируем сообщение
-        message_text = f"📝 <b>История изменений</b>\n{formatted}"
-        
-        # Telegram ограничивает длину сообщения до 4096 символов
-        if len(message_text) > 4000:
-            message_text = message_text[:3950] + "\n\n<i>... (см. полный файл ниже)</i>"
-        
-        await message.answer(message_text)
+        # Просто отправляем краткое сообщение и файл
+        # Без попыток парсить HTML - слишком много проблем с разметкой
+        await message.answer(
+            "📝 <b>История изменений</b>\n\n"
+            "Скачайте файл ниже для просмотра всех изменений проекта.",
+        )
         
         # Отправляем полный файл
-        from aiogram.types import FSInputFile
         await message.answer_document(
             FSInputFile(changelog_file),
-            caption="📄 Полный список изменений"
+            caption="📄 CHANGELOG.md - Полная история изменений"
         )
         
     except Exception as e:
@@ -241,8 +195,14 @@ async def cmd_profile(message: Message, starvell, **kwargs):
         # Формируем информацию о профиле
         username = user_data.get("username", "Неизвестно")
         user_id = user_data.get("id", "?")
-        balance = user_data.get("balance", 0)
-        hold_balance = user_data.get("holdBalance", 0)
+        
+        # Баланс может быть числом или словарем, безопасно извлекаем
+        balance_raw = user_data.get("balance", 0)
+        balance = balance_raw if isinstance(balance_raw, (int, float)) else 0
+        
+        hold_balance_raw = user_data.get("holdBalance", 0)
+        hold_balance = hold_balance_raw if isinstance(hold_balance_raw, (int, float)) else 0
+        
         total_balance = balance + hold_balance
         
         # Получаем статус верификации
@@ -309,8 +269,14 @@ async def callback_profile_refresh(callback: CallbackQuery, starvell, **kwargs):
         # Формируем информацию о профиле
         username = user_data.get("username", "Неизвестно")
         user_id = user_data.get("id", "?")
-        balance = user_data.get("balance", 0)
-        hold_balance = user_data.get("holdBalance", 0)
+        
+        # Баланс может быть числом или словарем, безопасно извлекаем
+        balance_raw = user_data.get("balance", 0)
+        balance = balance_raw if isinstance(balance_raw, (int, float)) else 0
+        
+        hold_balance_raw = user_data.get("holdBalance", 0)
+        hold_balance = hold_balance_raw if isinstance(hold_balance_raw, (int, float)) else 0
+        
         total_balance = balance + hold_balance
         
         # Получаем статус верификации

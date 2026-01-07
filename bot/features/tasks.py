@@ -22,11 +22,12 @@ logging.getLogger('apscheduler').setLevel(logging.WARNING)
 class BackgroundTasks:
     """Управление фоновыми задачами"""
     
-    def __init__(self, bot: Bot, starvell: StarvellService, db: Database, notifier=None):
+    def __init__(self, bot: Bot, starvell: StarvellService, db: Database, notifier=None, auto_response=None):
         self.bot = bot
         self.starvell = starvell
         self.db = db
         self.notifier = notifier
+        self.auto_response = auto_response
         self.scheduler = AsyncIOScheduler()
         self._seen_messages: dict[str, set[str]] = {}  # chat_id -> set of message_ids
         
@@ -57,6 +58,15 @@ class BackgroundTasks:
                 'interval',
                 seconds=BotConfig.AUTO_BUMP_INTERVAL(),
                 id='auto_bump',
+            )
+        
+        # Проверка автоответов (каждые 30 секунд)
+        if self.auto_response:
+            self.scheduler.add_job(
+                self._check_auto_responses,
+                'interval',
+                seconds=30,
+                id='auto_responses',
             )
             
         # Очистка старых данных (раз в день)
@@ -327,6 +337,14 @@ class BackgroundTasks:
             logger.info("Очистка завершена")
         except Exception as e:
             logger.error(f"Ошибка при очистке данных: {e}", exc_info=True)
+    
+    async def _check_auto_responses(self):
+        """Проверка и отправка автоответов"""
+        try:
+            if self.auto_response:
+                await self.auto_response.check_and_respond()
+        except Exception as e:
+            logger.error(f"Ошибка при проверке автоответов: {e}", exc_info=True)
             
     async def toggle_auto_bump(self, enabled: bool):
         """Включить/выключить авто-bump"""
