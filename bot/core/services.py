@@ -64,6 +64,12 @@ class StarvellService:
             result = await self.api.send_message(chat_id, content)
             await self.db.add_sent_message(chat_id, content)
             return result
+    
+    async def find_chat_by_user_id(self, user_id: str) -> Optional[str]:
+        """Найти ID чата с конкретным пользователем"""
+        if not self.api:
+            raise RuntimeError("API не инициализирован")
+        return await self.api.find_chat_by_user_id(user_id)
             
     async def get_orders(self) -> List[Dict[str, Any]]:
         """Получить список заказов"""
@@ -84,6 +90,12 @@ class StarvellService:
         if not self.api:
             raise RuntimeError("API не инициализирован")
         return await self.api.confirm_order(order_id)
+    
+    async def get_order_details(self, order_id: str) -> Dict[str, Any]:
+        """Получить детальную информацию о заказе"""
+        if not self.api:
+            raise RuntimeError("API не инициализирован")
+        return await self.api.get_order_details(order_id)
         
     async def bump_offers(
         self,

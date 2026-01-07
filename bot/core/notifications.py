@@ -75,9 +75,11 @@ class NotificationManager:
         NotificationType.AUTO_BUMP: "Авто-поднятие",
     }
     
-    def __init__(self, bot: Bot):
+    def __init__(self, bot: Bot, starvell_service=None):
         self.bot = bot
         self._enabled_notifications: Dict[int, Dict[str, bool]] = {}
+        self.plugin_manager = None  # Будет установлен позже
+        self.starvell_service = starvell_service  # Ссылка на сервис Starvell
         
     def _check_notification_enabled(self, user_id: int, notif_type: str) -> bool:
         """Проверка, включён ли тип уведомления для пользователя"""
@@ -237,6 +239,9 @@ class NotificationManager:
             message,
             keyboard=keyboard
         )
+        
+        # Вызываем хэндлеры плагинов для новых сообщений
+        await self._run_plugin_handlers_for_new_message(chat_id, author, content, message_id)
     
     async def notify_new_order(
         self,
@@ -297,6 +302,9 @@ class NotificationManager:
             message,
             keyboard=keyboard
         )
+        
+        # Вызываем хэндлеры плагинов для новых заказов
+        await self._run_plugin_handlers_for_new_order(order_data)
 
     async def notify_lots_raised(
         self,
@@ -417,16 +425,125 @@ class NotificationManager:
             keyboard=keyboard,
             force=True
         )
+    
+    async def _run_plugin_handlers_for_new_order(self, order_data: dict):
+        """Вызов хэндлеров плагинов для новых заказов"""
+        if not self.plugin_manager or not order_data:
+            return
+        
+        # Подготавливаем данные для плагинов
+        plugin_order_data = {
+            'id': str(order_data.get('id', '')),
+            'buyer': '',
+            'amount': 0.0,
+            'lot_name': '',
+            'lot_description': '',
+            'status': order_data.get('status', 'CREATED'),
+            'chat_id': ''  # Добавляем chat_id покупателя
+        }
+        
+        # Получаем имя покупателя и chat_id
+        buyer = order_data.get("user") or order_data.get("buyer") or {}
+        if isinstance(buyer, dict):
+            plugin_order_data['buyer'] = (
+                buyer.get("username") or 
+                buyer.get("nickname") or 
+                buyer.get("name") or 
+                buyer.get("displayName") or
+                str(buyer.get("id", "Unknown"))
+            )
+            # Извлекаем chat_id (ID покупателя в Starvell)
+            buyer_id = buyer.get("id")
+            if buyer_id:
+                plugin_order_data['chat_id'] = str(buyer_id)
+        elif isinstance(buyer, str):
+            plugin_order_data['buyer'] = buyer
+        
+        # Получаем цену (конвертируем из копеек)
+        amount_kopecks = (
+            order_data.get("totalPrice") or 
+            order_data.get("basePrice") or 
+            order_data.get("price") or 
+            order_data.get("amount") or 
+            0
+        )
+        plugin_order_data['amount'] = amount_kopecks / 100
+        
+        # Получаем данные лота
+        lot = order_data.get("offerDetails") or order_data.get("listing") or {}
+        if isinstance(lot, dict):
+            descriptions = lot.get("descriptions", {})
+            if descriptions:
+                rus_desc = descriptions.get("rus", {})
+                plugin_order_data['lot_name'] = (
+                    rus_desc.get("briefDescription") or 
+                    rus_desc.get("description") or
+                    lot.get("name") or 
+                    "Неизвестно"
+                )
+                plugin_order_data['lot_description'] = rus_desc.get("description", "")
+            else:
+                plugin_order_data['lot_name'] = lot.get("name") or "Неизвестно"
+                plugin_order_data['lot_description'] = lot.get("description", "")
+        
+        # Вызываем хэндлеры плагинов асинхронно
+        import asyncio
+        for handler in self.plugin_manager.new_order_handlers:
+            try:
+                # Проверяем, включён ли плагин
+                plugin_uuid = getattr(handler, 'plugin_uuid', None)
+                if plugin_uuid and plugin_uuid in self.plugin_manager.plugins:
+                    if not self.plugin_manager.plugins[plugin_uuid].enabled:
+                        continue
+                
+                # Вызываем асинхронный хэндлер с передачей starvell_service
+                if asyncio.iscoroutinefunction(handler):
+                    await handler(plugin_order_data, starvell_service=self.starvell_service)
+                else:
+                    handler(plugin_order_data, starvell_service=self.starvell_service)
+            except Exception as e:
+                logger.error(f"Ошибка выполнения хэндлера плагина {handler.__name__}: {e}", exc_info=True)
+    
+    async def _run_plugin_handlers_for_new_message(self, chat_id: str, author: str, content: str, message_id: Optional[str] = None):
+        """Вызов хэндлеров плагинов для новых сообщений"""
+        if not self.plugin_manager:
+            return
+        
+        # Подготавливаем данные для плагинов
+        plugin_message_data = {
+            'chat_id': chat_id,
+            'author': author,
+            'content': content,
+            'message_id': message_id or ''
+        }
+        
+        # Вызываем хэндлеры плагинов асинхронно
+        import asyncio
+        for handler in self.plugin_manager.new_message_handlers:
+            try:
+                # Проверяем, включён ли плагин
+                plugin_uuid = getattr(handler, 'plugin_uuid', None)
+                if plugin_uuid and plugin_uuid in self.plugin_manager.plugins:
+                    if not self.plugin_manager.plugins[plugin_uuid].enabled:
+                        continue
+                
+                # Вызываем асинхронный хэндлер с передачей starvell_service
+                if asyncio.iscoroutinefunction(handler):
+                    await handler(plugin_message_data, starvell_service=self.starvell_service)
+                else:
+                    handler(plugin_message_data, starvell_service=self.starvell_service)
+            except Exception as e:
+                logger.error(f"Ошибка выполнения хэндлера плагина {handler.__name__}: {e}", exc_info=True)
 
 
 # Singleton instance
 _notification_manager: Optional[NotificationManager] = None
 
 
-def init_notifications(bot: Bot) -> NotificationManager:
+def init_notifications(bot: Bot, starvell_service=None) -> NotificationManager:
     """Инициализировать менеджер уведомлений"""
     global _notification_manager
-    _notification_manager = NotificationManager(bot)
+    _notification_manager = NotificationManager(bot, starvell_service)
     return _notification_manager
 
 

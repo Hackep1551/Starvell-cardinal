@@ -55,6 +55,7 @@ async def main():
     # Устанавливаем меню команд
     commands = [
         BotCommand(command="menu", description="🏠 Главное меню"),
+        BotCommand(command="changelog", description="📝 Список изменений"),
         BotCommand(command="update", description="🔄 Обновить бота"),
         BotCommand(command="logs", description="📋 Получить логи"),
         BotCommand(command="restart", description="🔁 Перезапустить бота"),
@@ -90,7 +91,7 @@ async def main():
     
     # Инициализация системы уведомлений
     from bot.core import init_notifications
-    notifications = init_notifications(bot)
+    notifications = init_notifications(bot, starvell)
     logger.info("Система уведомлений инициализирована")
     
     # Сервис авто-выдачи (без зависимостей)
@@ -111,6 +112,9 @@ async def main():
     # Менеджер плагинов
     plugin_manager = PluginManager()
     plugin_manager.load_plugins()
+    
+    # Устанавливаем plugin_manager в notifications для вызова хэндлеров
+    notifications.plugin_manager = plugin_manager
     
     # Инициализируем панель управления плагинами
     init_plugins_cp(bot, plugin_manager, router)
