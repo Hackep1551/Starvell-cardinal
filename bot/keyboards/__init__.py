@@ -23,6 +23,7 @@ from .keyboards import (
     get_templates_menu,
     get_template_detail_menu,
     get_template_edit_menu,
+    get_custom_commands_menu,
 )
 from .plugins import plugins_list, edit_plugin, plugin_commands
 
@@ -47,6 +48,7 @@ __all__ = [
     'get_templates_menu',
     'get_template_detail_menu',
     'get_template_edit_menu',
+    'get_custom_commands_menu',
     'plugins_list',
     'edit_plugin',
     'plugin_commands',

@@ -187,6 +187,9 @@ class BackgroundTasks:
                 if message_id:
                     self._seen_messages[chat_id].add(message_id)
                     
+                # Проверяем кастомные команды
+                await self._check_custom_command(chat_id, content, author_id)
+                    
                 # Логируем
                 display_name = author_nickname or author_id
                 logger.info(f"📩 Новое сообщение от {display_name}: {content[:50]}...")
@@ -347,6 +350,48 @@ class BackgroundTasks:
             logger.info("Очистка завершена")
         except Exception as e:
             logger.error(f"Ошибка при очистке данных: {e}", exc_info=True)
+    
+    async def _check_custom_command(self, chat_id: str, message_text: str, author_id: str):
+        """Проверить и обработать кастомную команду"""
+        try:
+            import json
+            from pathlib import Path
+            
+            # Загружаем кастомные команды
+            commands_file = Path("storage/custom_commands.json")
+            if not commands_file.exists():
+                return
+            
+            with open(commands_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            # Проверяем, включены ли кастомные команды
+            if not data.get("enabled", False):
+                return
+            
+            prefix = data.get("prefix", "!")
+            commands = data.get("commands", [])
+            
+            # Проверяем, начинается ли сообщение с префикса
+            if not message_text.startswith(prefix):
+                return
+            
+            # Извлекаем команду (без префикса)
+            command_text = message_text[len(prefix):].strip().lower()
+            
+            # Ищем соответствующую команду
+            for cmd in commands:
+                if cmd["name"].lower() == command_text:
+                    # Нашли команду - отправляем ответ
+                    try:
+                        await self.starvell.send_message(chat_id, cmd["text"])
+                        logger.info(f"🤖 Отправлен автоответ на команду '{prefix}{cmd['name']}' пользователю {author_id}")
+                    except Exception as e:
+                        logger.error(f"Ошибка при отправке автоответа на команду: {e}")
+                    break
+                    
+        except Exception as e:
+            logger.error(f"Ошибка при обработке кастомной команды: {e}", exc_info=True)
     
     async def _check_auto_responses(self):
         """Проверка и отправка автоответов"""

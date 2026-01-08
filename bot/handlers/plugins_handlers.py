@@ -202,9 +202,29 @@ async def plugin_delete_confirm(callback: CallbackQuery, plugin_manager, **kwarg
             logger.info(f"Плагин {plugin_name} удалён пользователем {callback.from_user.id}")
             await callback.answer(f"✅ Плагин {plugin_name} удалён", show_alert=True)
             
-            # Возвращаемся к списку плагинов
-            callback.data = f"plugins_list:{offset}"
-            await show_plugins_list(callback, plugin_manager=plugin_manager)
+            # Возвращаемся к списку плагинов - пересоздаём список вручную
+            plugins_data = []
+            for p_uuid, p in plugin_manager.plugins.items():
+                plugins_data.append({
+                    "uuid": p_uuid,
+                    "name": p.name,
+                    "version": p.version,
+                    "description": p.description,
+                    "enabled": p.enabled
+                })
+            
+            keyboard = get_plugins_menu(plugins_data, offset)
+            
+            enabled_count = sum(1 for p in plugins_data if p["enabled"])
+            disabled_count = len(plugins_data) - enabled_count
+            
+            text = "🧩 <b>Управление плагинами</b>\n\n"
+            text += f"🧩 Всего плагинов: <code>{len(plugins_data)}</code>\n"
+            text += f"✅ Активных: <code>{enabled_count}</code>\n"
+            text += f"❌ Отключенных: <code>{disabled_count}</code>\n\n"
+            text += "⚠️ После активации/деактивации/удаления плагина необходимо перезапустить бота! /restart"
+            
+            await callback.message.edit_text(text, reply_markup=keyboard)
         else:
             await callback.answer("❌ Ошибка при удалении", show_alert=True)
         

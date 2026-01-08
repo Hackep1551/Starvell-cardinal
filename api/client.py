@@ -468,9 +468,9 @@ class StarAPI:
                     game_categories[game_id].append(category_id)
                     logger.debug(f"    ✅ Добавлено: game {game_id} -> category {category_id}")
                     
-        logger.info(f"📦 Найдено игр: {len(game_categories)}")
+        logger.debug(f"📦 Найдено игр: {len(game_categories)}")
         for game_id, cat_ids in game_categories.items():
-            logger.info(f"  🎮 Game {game_id}: категории {cat_ids}")
+            logger.debug(f"  🎮 Game {game_id}: категории {cat_ids}")
             
         return game_categories
     
