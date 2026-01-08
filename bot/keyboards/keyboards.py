@@ -27,6 +27,12 @@ class CBT:
     CONFIGS_MENU = "configs"
     AUTHORIZED_USERS = "auth_users"
     
+    # Кастомные команды
+    CUSTOM_COMMANDS = "custom_cmds"
+    ADD_CUSTOM_COMMAND = "custom_cmd_add"
+    TOGGLE_CUSTOM_COMMANDS = "custom_cmd_toggle"
+    CHANGE_PREFIX = "custom_cmd_prefix"
+    
     # Конфиги
     CONFIG_DOWNLOAD = "cfg_download"
     CONFIG_UPLOAD = "cfg_upload"
@@ -116,6 +122,12 @@ def get_main_menu(update_available: bool = False) -> InlineKeyboardMarkup:
             InlineKeyboardButton(
                 text="🔔 Настройки уведомлений",
                 callback_data=CBT.NOTIFICATIONS
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="🤖 Настройка автоответов",
+                callback_data=CBT.CUSTOM_COMMANDS
             ),
         ],
         [
@@ -954,6 +966,89 @@ def get_authorized_users_menu(admin_ids: list) -> InlineKeyboardMarkup:
         InlineKeyboardButton(
             text="🔙 Назад",
             callback_data=CBT.MAIN_PAGE_2
+        )
+    ])
+    
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_custom_commands_menu(commands: list, page: int = 0, enabled: bool = False, prefix: str = "!") -> InlineKeyboardMarkup:
+    """Меню кастомных команд с пагинацией"""
+    keyboard = []
+    
+    # Кнопка включения/выключения
+    keyboard.append([
+        InlineKeyboardButton(
+            text=f"{'✅ Включено' if enabled else '❌ Выключено'}",
+            callback_data=CBT.TOGGLE_CUSTOM_COMMANDS
+        )
+    ])
+    
+    # Кнопка изменения префикса
+    keyboard.append([
+        InlineKeyboardButton(
+            text=f"🔧 Изменить префикс ({prefix})",
+            callback_data=CBT.CHANGE_PREFIX
+        )
+    ])
+    
+    # Кнопка добавления команды
+    keyboard.append([
+        InlineKeyboardButton(
+            text="➕ Добавить команду",
+            callback_data=CBT.ADD_CUSTOM_COMMAND
+        )
+    ])
+    
+    # Команды (по 5 на страницу)
+    items_per_page = 5
+    start = page * items_per_page
+    end = start + items_per_page
+    page_commands = commands[start:end]
+    
+    for cmd in page_commands:
+        keyboard.append([
+            InlineKeyboardButton(
+                text=f"{prefix}{cmd['name']}",
+                callback_data=f"custom_cmd_view:{cmd['name']}"
+            )
+        ])
+    
+    # Пагинация
+    if len(commands) > items_per_page:
+        pagination_row = []
+        
+        if page > 0:
+            pagination_row.append(
+                InlineKeyboardButton(
+                    text="⬅️",
+                    callback_data=f"custom_cmd_page:{page-1}"
+                )
+            )
+        
+        total_pages = (len(commands) + items_per_page - 1) // items_per_page
+        pagination_row.append(
+            InlineKeyboardButton(
+                text=f"{page + 1}/{total_pages}",
+                callback_data="empty"
+            )
+        )
+        
+        if end < len(commands):
+            pagination_row.append(
+                InlineKeyboardButton(
+                    text="➡️",
+                    callback_data=f"custom_cmd_page:{page+1}"
+                )
+            )
+        
+        keyboard.append(pagination_row)
+    
+    # Кнопка назад
+    keyboard.append([
+        InlineKeyboardButton(
+            text="🔙 Назад",
+            callback_data=CBT.MAIN
         )
     ])
     

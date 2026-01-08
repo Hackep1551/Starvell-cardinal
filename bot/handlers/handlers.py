@@ -19,9 +19,10 @@ from bot.keyboards import (
     get_blacklist_menu,
     get_plugins_menu,
     get_select_template_menu,
+    get_custom_commands_menu,
     CBT,
 )
-from bot.handlers import auto_delivery_handlers, blacklist_handlers, plugins_handlers, templates_handlers, extra_handlers
+from bot.handlers import auto_delivery_handlers, blacklist_handlers, plugins_handlers, templates_handlers, extra_handlers, custom_commands_handlers
 
 
 router = Router()
@@ -30,6 +31,7 @@ router.include_router(blacklist_handlers.router)
 router.include_router(plugins_handlers.router)
 router.include_router(templates_handlers.router)
 router.include_router(extra_handlers.router)
+router.include_router(custom_commands_handlers.router)
 
 
 # === Состояния ===
@@ -809,19 +811,21 @@ async def callback_switch_order_confirm(callback: CallbackQuery, auto_response, 
     status = "включен" if new_state else "выключен"
     await callback.answer(f"Авто-ответ на подтверждение заказа {status}", show_alert=False)
     
-    # Обновляем меню
-    auto_bump = BotConfig.AUTO_BUMP_ENABLED()
-    auto_delivery = BotConfig.AUTO_DELIVERY_ENABLED()
-    auto_restore = BotConfig.AUTO_RESTORE_ENABLED()
-    auto_install = BotConfig.AUTO_UPDATE_INSTALL()
-    order_confirm = new_state
-    review_response = BotConfig.REVIEW_RESPONSE_ENABLED()
+    # Обновляем меню - возвращаемся в меню настройки ответа
+    from bot.keyboards import get_order_confirm_response_menu
+    enabled = new_state
+    text = BotConfig.ORDER_CONFIRM_RESPONSE_TEXT()
     
-    status_text = "⚙️ <b>Глобальные переключатели</b>\n\nЗдесь вы можете включать и отключать основные функции бота.\n\n"
+    message_text = (
+        "✅ <b>Ответ на подтверждение заказа</b>\n\n"
+        f"<b>Статус:</b> {'включено ✅' if enabled else 'выключено ❌'}\n\n"
+        f"<b>Текущий текст ответа:</b>\n<i>{text}</i>\n\n"
+        "При завершении заказа бот автоматически отправит это сообщение покупателю."
+    )
     
     await callback.message.edit_text(
-        status_text,
-        reply_markup=get_global_switches_menu(auto_bump, auto_delivery, auto_restore, auto_install, order_confirm, review_response)
+        message_text,
+        reply_markup=get_order_confirm_response_menu(enabled, text)
     )
 
 
@@ -841,19 +845,21 @@ async def callback_switch_review_response(callback: CallbackQuery, auto_response
     status = "включен" if new_state else "выключен"
     await callback.answer(f"Авто-ответ на отзыв {status}", show_alert=False)
     
-    # Обновляем меню
-    auto_bump = BotConfig.AUTO_BUMP_ENABLED()
-    auto_delivery = BotConfig.AUTO_DELIVERY_ENABLED()
-    auto_restore = BotConfig.AUTO_RESTORE_ENABLED()
-    auto_install = BotConfig.AUTO_UPDATE_INSTALL()
-    order_confirm = BotConfig.ORDER_CONFIRM_RESPONSE_ENABLED()
-    review_response = new_state
+    # Обновляем меню - возвращаемся в меню настройки ответа
+    from bot.keyboards import get_review_response_menu
+    enabled = new_state
+    text = BotConfig.REVIEW_RESPONSE_TEXT()
     
-    status_text = "⚙️ <b>Глобальные переключатели</b>\n\nЗдесь вы можете включать и отключать основные функции бота.\n\n"
+    message_text = (
+        "⭐ <b>Ответ на отзыв</b>\n\n"
+        f"<b>Статус:</b> {'включено ✅' if enabled else 'выключено ❌'}\n\n"
+        f"<b>Текущий текст ответа:</b>\n<i>{text}</i>\n\n"
+        "При получении отзыва бот автоматически отправит это сообщение."
+    )
     
     await callback.message.edit_text(
-        status_text,
-        reply_markup=get_global_switches_menu(auto_bump, auto_delivery, auto_restore, auto_install, order_confirm, review_response)
+        message_text,
+        reply_markup=get_review_response_menu(enabled, text)
     )
 
 
