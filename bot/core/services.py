@@ -35,6 +35,20 @@ class StarvellService:
         if not self.api:
             raise RuntimeError("API не инициализирован")
         return await self.api.get_user_info()
+    
+    async def get_user_profile(self, user_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Получить профиль пользователя по ID
+        
+        Args:
+            user_id: ID пользователя в Starvell
+            
+        Returns:
+            dict: Данные профиля (nickname, name, id и др.) или None если не найден
+        """
+        if not self.api:
+            raise RuntimeError("API не инициализирован")
+        return await self.api.get_user_profile(user_id)
         
     async def get_chats(self) -> List[Dict[str, Any]]:
         """Получить список чатов"""

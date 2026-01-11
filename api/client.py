@@ -125,6 +125,37 @@ class StarAPI:
             "sid": sid or self.session.get_sid(),
             "theme": page_props.get("currentTheme"),
         }
+    
+    async def get_user_profile(self, user_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Получить профиль пользователя по ID
+        
+        Args:
+            user_id: ID пользователя в Starvell
+            
+        Returns:
+            dict: Данные профиля (nickname, name, id и др.) или None если не найден
+        """
+        try:
+            # Используем URL вида https://starvell.com/_next/data/{build_id}/user/{user_id}.json
+            data = await self._get_next_data(f"user/{user_id}.json")
+            page_props = data.get("pageProps", {})
+            
+            # Извлекаем данные пользователя
+            user_data = page_props.get("user")
+            if user_data:
+                return {
+                    "id": user_data.get("id"),
+                    "nickname": user_data.get("nickname") or user_data.get("name"),
+                    "name": user_data.get("name"),
+                    "username": user_data.get("username"),
+                    "avatar": user_data.get("avatar"),
+                }
+            
+            return None
+        except Exception as e:
+            logger.debug(f"Не удалось получить профиль пользователя {user_id}: {e}")
+            return None
         
     # ==================== Чаты ====================
     
