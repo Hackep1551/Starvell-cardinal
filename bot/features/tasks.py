@@ -33,6 +33,8 @@ class BackgroundTasks:
         self.auto_response = auto_response
         self.scheduler = AsyncIOScheduler()
         self._seen_messages: dict[str, set[str]] = {}  # chat_id -> set of message_ids
+        self._first_check_messages = True  # Флаг первой проверки после запуска
+        self._first_check_orders = True  # Флаг первой проверки заказов после запуска
         
     def start(self):
         """Запустить фоновые задачи"""
@@ -118,6 +120,23 @@ class BackgroundTasks:
                 logger.warning("Менеджер уведомлений не инициализирован")
                 return
             
+            # Если это первая проверка после запуска - пропускаем уведомления,
+            # но сохраняем сообщения как "увиденные"
+            if self._first_check_messages:
+                self._first_check_messages = False
+                for msg_data in new_messages:
+                    chat_id = str(msg_data.get("chat_id", ""))
+                    message = msg_data.get("message", {})
+                    message_id = message.get("id")
+                    
+                    if chat_id not in self._seen_messages:
+                        self._seen_messages[chat_id] = set()
+                    if message_id:
+                        self._seen_messages[chat_id].add(message_id)
+                
+                logger.info(f"Первая проверка после запуска: пропущено {len(new_messages)} старых сообщений")
+                return
+            
             for msg_data in new_messages:
                 chat_id = str(msg_data.get("chat_id", ""))
                 message = msg_data.get("message", {})
@@ -200,6 +219,12 @@ class BackgroundTasks:
             
             if not self.notifier:
                 logger.warning("Менеджер уведомлений не инициализирован")
+                return
+            
+            # Если это первая проверка после запуска - пропускаем уведомления
+            if self._first_check_orders:
+                self._first_check_orders = False
+                logger.info(f"Первая проверка после запуска: пропущено {len(new_orders)} старых заказов")
                 return
             
             for order in new_orders:

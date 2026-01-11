@@ -80,6 +80,40 @@ class NotificationManager:
         self._enabled_notifications: Dict[int, Dict[str, bool]] = {}
         self.plugin_manager = None  # Будет установлен позже
         self.starvell_service = starvell_service  # Ссылка на сервис Starvell
+        self._nickname_cache: Dict[str, str] = {}  # Кэш nickname: user_id -> nickname
+    
+    async def _get_nickname_by_id(self, user_id: str) -> Optional[str]:
+        """
+        Получить nickname пользователя по ID (с кэшированием)
+        
+        Args:
+            user_id: ID пользователя
+            
+        Returns:
+            str: Nickname или None если не найден
+        """
+        # Проверяем кэш
+        if user_id in self._nickname_cache:
+            return self._nickname_cache[user_id]
+        
+        # Если нет starvell_service - возвращаем None
+        if not self.starvell_service:
+            return None
+        
+        try:
+            # Запрашиваем профиль через API
+            profile = await self.starvell_service.get_user_profile(user_id)
+            if profile:
+                nickname = profile.get("nickname") or profile.get("username") or profile.get("name")
+                if nickname:
+                    # Сохраняем в кэш
+                    self._nickname_cache[user_id] = nickname
+                    logger.debug(f"Получен nickname для {user_id}: {nickname}")
+                    return nickname
+        except Exception as e:
+            logger.debug(f"Ошибка получения nickname для {user_id}: {e}")
+        
+        return None
         
     def _check_notification_enabled(self, user_id: int, notif_type: str) -> bool:
         """Проверка, включён ли тип уведомления для пользователя"""
@@ -189,8 +223,12 @@ class NotificationManager:
         from bot.keyboards.keyboards import get_select_template_menu
         from bot.core.templates import get_template_manager
         
-        # Используем nickname если есть, иначе ID
-        display_name = author_nickname if author_nickname else author
+        # Используем nickname если есть, иначе пытаемся получить через API
+        display_name = author_nickname
+        if not display_name:
+            # Пытаемся получить nickname по author (ID)
+            fetched_nickname = await self._get_nickname_by_id(author)
+            display_name = fetched_nickname if fetched_nickname else author
         
         # Форматируем сообщение: смайлик + nickname/ID: message
         message = f"💬 <b>{display_name}:</b> {content}"
@@ -241,7 +279,13 @@ class NotificationManager:
         )
         
         # Вызываем хэндлеры плагинов для новых сообщений
-        await self._run_plugin_handlers_for_new_message(chat_id, author, content, message_id)
+        # Передаём тот же display_name что использовали для уведомления
+        await self._run_plugin_handlers_for_new_message(
+            chat_id, 
+            display_name,  # Уже содержит nickname или ID
+            content, 
+            message_id
+        )
     
     async def notify_new_order(
         self,
