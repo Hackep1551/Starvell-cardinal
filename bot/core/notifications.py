@@ -281,6 +281,7 @@ class NotificationManager:
         keyboard = InlineKeyboardMarkup(inline_keyboard=buttons) if buttons else None
         
         await self.notify_all_admins(
+            NotificationType.NEW_MESSAGE,
             message,
             keyboard=keyboard
         )
@@ -336,7 +337,7 @@ class NotificationManager:
             if len(reply_callback) <= 64:
                 row1.append(
                     InlineKeyboardButton(
-                        text="� Ответить",
+                        text="📝 Ответить",
                         callback_data=reply_callback
                     )
                 )
