@@ -36,22 +36,26 @@ class KeepAliveService:
         if self._running:
             logger.warning("Сервис вечного онлайна уже запущен")
             return
-            
-        self._running = True
-        
+
         # Проверяем включено ли в конфиге
         if not BotConfig.KEEP_ALIVE_ENABLED():
             logger.info("⏸️ Вечный онлайн отключен в настройках")
+            self._running = False
             return
-        
-        # Запускаем фоновую задачу
-        self._task = asyncio.create_task(self._keep_alive_loop())
-        logger.debug(f"Сервис вечного онлайна запущен (интервал: {self._interval}с)")
+
+        # Устанавливаем флаг и запускаем фоновую задачу
+        self._running = True
+        try:
+            self._task = asyncio.create_task(self._keep_alive_loop())
+            logger.info(f"Сервис вечного онлайна запущен (интервал: {self._interval}s)")
+        except Exception as e:
+            self._running = False
+            logger.error(f"Не удалось запустить KeepAliveTask: {e}")
         
     async def stop(self):
         """Остановить сервис"""
         self._running = False
-        
+
         if self._task:
             self._task.cancel()
             try:
@@ -59,24 +63,25 @@ class KeepAliveService:
             except asyncio.CancelledError:
                 pass
             self._task = None
-            
+
         logger.info("⏹️ Сервис вечного онлайна остановлен")
         
     async def _keep_alive_loop(self):
         """Основной цикл поддержания онлайна"""
+        logger.debug("KeepAlive loop started")
         # Первый запрос сразу
         await self._send_heartbeat()
-        
+
         while self._running:
             try:
                 await asyncio.sleep(self._interval)
-                
+
                 if not BotConfig.KEEP_ALIVE_ENABLED():
                     logger.debug("Вечный онлайн отключен, пропускаем heartbeat")
                     continue
-                
+
                 await self._send_heartbeat()
-                
+
             except asyncio.CancelledError:
                 break
             except Exception as e:

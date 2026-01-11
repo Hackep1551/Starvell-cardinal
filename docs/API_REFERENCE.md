@@ -48,8 +48,8 @@ await starvell_service.send_message(
             "status": "CREATED",              # CREATED, COMPLETED, CANCELED, etc.
             "basePrice": 100,                  # Цена в копейках
             "totalPrice": 108,                 # Итого с комиссией (копейки)
-            "buyerId": 142989,                 # ID покупателя (число)
-            "sellerId": 7970,                  # ID продавца (число)
+            "buyerId": 1111,                 # ID покупателя (число)
+            "sellerId": 2222,                  # ID продавца (число)
             "offerId": 141378,                 # ID лота
             "quantity": 1000,                  # Количество единиц товара
             "createdAt": "2026-01-07T10:22:01.068Z",
@@ -57,7 +57,7 @@ await starvell_service.send_message(
             "refundedAt": None,
             "completedAt": None,
             "buyer": {
-                "id": 142989,
+                "id": 1111,
                 "username": "Hackep",
                 "isOnline": True,
                 "lastOnlineAt": "2026-01-07T09:59:52.022Z",
@@ -73,7 +73,7 @@ await starvell_service.send_message(
                 "reviewsCount": 0
             },
             "seller": {
-                "id": 7970,
+                "id": 2222,
                 "username": "Kirito",
                 "isOnline": True,
                 # ... аналогично buyer

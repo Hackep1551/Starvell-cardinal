@@ -114,7 +114,7 @@ def get_main_menu(update_available: bool = False) -> InlineKeyboardMarkup:
     keyboard.extend([
         [
             InlineKeyboardButton(
-                text="⚙️ Глобальные переключатели (в бета-тесте)",
+                text="⚙️ Глобальные переключатели",
                 callback_data=CBT.GLOBAL_SWITCHES
             ),
         ],
@@ -132,7 +132,7 @@ def get_main_menu(update_available: bool = False) -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton(
-                text="📦 Автовыдача (в бета-тесте)",
+                text="📦 Автовыдача",
                 callback_data=CBT.AUTO_DELIVERY
             ),
         ],
@@ -192,7 +192,7 @@ def get_main_menu_page_2(update_available: bool = False) -> InlineKeyboardMarkup
         ],
         [
             InlineKeyboardButton(
-                text="🚫 Чёрный список (в разработке)",
+                text="🚫 Чёрный список",
                 callback_data=CBT.BLACKLIST
             ),
         ],
@@ -711,7 +711,7 @@ def get_templates_menu(templates: list) -> InlineKeyboardMarkup:
     """
     keyboard = []
     
-    # Список заготовок
+    # Список быстрых ответов
     for template in templates:
         keyboard.append([
             InlineKeyboardButton(
@@ -720,10 +720,10 @@ def get_templates_menu(templates: list) -> InlineKeyboardMarkup:
             )
         ])
     
-    # Кнопка добавления
+    # Кнопка добавления быстрого ответа
     keyboard.append([
         InlineKeyboardButton(
-            text="➕ Добавить заготовку",
+            text="➕ Добавить быстрый ответ",
             callback_data=CBT.ADD_TEMPLATE
         )
     ])
@@ -801,12 +801,12 @@ def get_template_edit_menu(template_id: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
-def get_select_template_menu(chat_id: int, templates: list = None) -> InlineKeyboardMarkup:
+def get_select_template_menu(chat_id: str, templates: list = None) -> InlineKeyboardMarkup:
     """
     Меню выбора заготовки для отправки
     
     Args:
-        chat_id: ID чата для отправки
+        chat_id: ID чата для отправки (строка, может быть UUID)
         templates: Список заготовок (если None - загрузит автоматически)
     """
     from bot.core.templates import get_template_manager
@@ -828,7 +828,7 @@ def get_select_template_menu(chat_id: int, templates: list = None) -> InlineKeyb
     else:
         keyboard.append([
             InlineKeyboardButton(
-                text="➕ Добавить заготовку",
+                text="➕ Добавить быстрый ответ",
                 callback_data=CBT.ADD_TEMPLATE
             )
         ])

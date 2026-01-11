@@ -42,9 +42,6 @@ async def main():
         logger.error("Проверьте configs/_main.cfg")
         return
         
-    logger.info("=" * 60)
-    logger.info("Запуск Starvell Bot")
-    logger.info("=" * 60)
     
     # Инициализация компонентов
     bot = Bot(
