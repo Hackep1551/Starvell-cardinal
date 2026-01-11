@@ -92,10 +92,8 @@ class BackgroundTasks:
     async def _check_new_messages_loop(self):
         """Polling цикл для проверки новых сообщений"""
         try:
-            # Проверяем только если уведомления включены
-            if not BotConfig.NOTIFY_NEW_MESSAGES():
-                return
-                
+            # ВСЕГДА проверяем сообщения (для плагинов и кастомных команд)
+            # Уведомления будут отправлены только если включены (проверка внутри notify_new_message)
             await self._check_new_messages()
                     
         except Exception as e:
@@ -104,10 +102,8 @@ class BackgroundTasks:
     async def _check_new_orders_loop(self):
         """Polling цикл для проверки новых заказов """
         try:
-            # Проверяем только если уведомления включены
-            if not BotConfig.NOTIFY_NEW_ORDERS():
-                return
-                
+            # ВСЕГДА проверяем заказы (для плагинов)
+            # Уведомления будут отправлены только если включены (проверка внутри notify_new_order)
             await self._check_new_orders()
                     
         except Exception as e:
