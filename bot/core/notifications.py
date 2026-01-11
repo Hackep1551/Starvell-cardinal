@@ -223,6 +223,7 @@ class NotificationManager:
         from bot.keyboards.keyboards import get_select_template_menu
         from bot.core.templates import get_template_manager
         
+        # Todo: найти время и фиксануть 
         # Используем nickname если есть, иначе пытаемся получить через API
         display_name = author_nickname
         if not display_name:
@@ -235,33 +236,40 @@ class NotificationManager:
         
         # Создаём кнопки
         buttons = []
-        
-        # Кнопка "Ответить" - используем короткий формат
-        short_chat_id = chat_id[-12:] if len(chat_id) > 12 else chat_id
-        callback_data = f"r:{short_chat_id}"
-        
-        if len(callback_data) <= 64:
-            buttons.append([
-                InlineKeyboardButton(
-                    text="💬 Ответить",
-                    callback_data=callback_data
+
+        # Формируем первую строку: Ответить + Быстрые ответы (если есть chat_id)
+        row1 = []
+
+        # Кнопка "Ответить" - используем полный chat_id (UUID или numeric)
+        if chat_id:
+            reply_callback = f"r:{chat_id}"
+            # Telegram callback_data limit is 64 bytes; UUIDs are short enough
+            if len(reply_callback) <= 64:
+                row1.append(
+                    InlineKeyboardButton(
+                        text="💬 Ответить",
+                        callback_data=reply_callback
+                    )
                 )
-            ])
-        
+
         # Проверяем количество заготовок
         template_manager = get_template_manager()
         templates_count = template_manager.count()
-        
-        # Кнопка "Заготовки ответов"
-        if templates_count > 0:
-            buttons.append([
+
+        # Кнопка "Быстрые ответы" — показываем всегда, если есть chat_id
+        if chat_id:
+            tpl_text = f"📝 Быстрые ответы ({templates_count})" if templates_count > 0 else "📝 Быстрые ответы"
+            row1.append(
                 InlineKeyboardButton(
-                    text=f"📝 Заготовки ({templates_count})",
+                    text=tpl_text,
                     callback_data=f"show_templates:{chat_id}"
                 )
-            ])
-        
-        # Кнопка "Перейти в чат" - URL кнопка
+            )
+
+        if row1:
+            buttons.append(row1)
+
+        # Кнопка "Перейти в чат" - URL кнопка (в новой строке)
         chat_url = f"https://starvell.com/chat/{chat_id}"
         buttons.append([
             InlineKeyboardButton(
@@ -269,11 +277,10 @@ class NotificationManager:
                 url=chat_url
             )
         ])
-        
+
         keyboard = InlineKeyboardMarkup(inline_keyboard=buttons) if buttons else None
         
         await self.notify_all_admins(
-            NotificationType.NEW_MESSAGE,
             message,
             keyboard=keyboard
         )
@@ -317,18 +324,34 @@ class NotificationManager:
             if isinstance(buyer_data, dict):
                 chat_id = buyer_data.get("id")
         
-        # Проверяем количество заготовок
+        # Проверяем количество быстрых ответов
         template_manager = get_template_manager()
         templates_count = template_manager.count()
-        
-        # Кнопка "Заготовки ответов" (если есть chat_id)
-        if chat_id and templates_count > 0:
-            buttons.append([
+
+        # Первая строка: Ответить + Быстрые ответы (если есть chat_id)
+        row1 = []
+        if chat_id:
+            # Кнопка Ответить
+            reply_callback = f"r:{chat_id}"
+            if len(reply_callback) <= 64:
+                row1.append(
+                    InlineKeyboardButton(
+                        text="� Ответить",
+                        callback_data=reply_callback
+                    )
+                )
+
+            # Кнопка Быстрые ответы (показываем всегда, даже если их 0)
+            tpl_text = f"📝 Быстрые ответы ({templates_count})" if templates_count > 0 else "📝 Быстрые ответы"
+            row1.append(
                 InlineKeyboardButton(
-                    text=f"📝 Заготовки ({templates_count})",
+                    text=tpl_text,
                     callback_data=f"show_templates:{chat_id}"
                 )
-            ])
+            )
+
+        if row1:
+            buttons.append(row1)
         
         # Кнопка ссылки на заказ (используем полный order_id)
         order_url = f"https://starvell.com/order/{order_id}"

@@ -176,9 +176,7 @@ async def main():
                 time.sleep(3)
                 return
                 
-            logger.info("\n" + "=" * 70)
             logger.info("УСТАНОВКА ЗАВЕРШЕНА!")
-            logger.info("=" * 70)
             logger.info("Перезапускаю бота...\n")
             time.sleep(2)
             
@@ -191,9 +189,7 @@ async def main():
     
     # Запускаем основной бот
     try:
-        logger.info("=" * 70)
         logger.info("ЗАПУСК БОТА")
-        logger.info("=" * 70)
         
         # Импортируем основной модуль бота
         from bot.bot_core import main as bot_main

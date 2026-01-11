@@ -1,5 +1,5 @@
 """
-Обработчики для работы с заготовками ответов
+Обработчики для работы с быстрыми ответами
 """
 
 from aiogram import Router, F
@@ -22,7 +22,7 @@ router = Router()
 
 
 class TemplateStates(StatesGroup):
-    """Состояния для работы с заготовками"""
+    """Состояния для работы с быстрыми ответами"""
     waiting_for_name = State()
     waiting_for_text = State()
     waiting_for_edit_name = State()
@@ -31,42 +31,45 @@ class TemplateStates(StatesGroup):
 
 @router.callback_query(F.data.startswith("show_templates:"))
 async def callback_show_templates_for_reply(callback: CallbackQuery):
-    """Показать заготовки для выбора и отправки"""
+    """Показать быстрые ответы для выбора и отправки"""
     await callback.answer()
-    
+
     chat_id = callback.data.split(":")[1]
-    
+
     template_manager = get_template_manager()
     templates = template_manager.get_all()
-    
+
     if templates:
-        text = "📝 <b>Выберите заготовку для отправки:</b>"
+        text = "📝 <b>Выберите быстрый ответ для отправки:</b>"
     else:
-        text = "📝 <b>Заготовок пока нет</b>\n\nДобавьте первую заготовку, чтобы использовать её для быстрых ответов."
-    
+        text = (
+            "📝 <b>Быстрых ответов пока нет</b>\n\n"
+            "У вас пока нет быстрых ответов. Вы можете добавить первый быстрый ответ ниже."
+        )
+
     await callback.message.edit_text(
         text,
-        reply_markup=get_select_template_menu(int(chat_id), templates)
+        reply_markup=get_select_template_menu(chat_id, templates)
     )
 
 
 @router.callback_query(F.data == CBT.TEMPLATES)
 async def callback_templates_menu(callback: CallbackQuery):
-    """Меню заготовок ответов"""
+    """Меню быстрых ответов"""
     await callback.answer()
-    
+
     template_manager = get_template_manager()
     templates = template_manager.get_all()
-    
-    text = "📝 <b>Заготовки ответов</b>\n\n"
-    
+
+    text = "📝 <b>Быстрые ответы</b>\n\n"
+
     if templates:
-        text += f"Всего заготовок: <b>{len(templates)}</b>\n\n"
-        text += "Выберите заготовку для просмотра или редактирования:"
+        text += f"Всего быстрых ответов: <b>{len(templates)}</b>\n\n"
+        text += "Выберите быстрый ответ для просмотра или редактирования:"
     else:
-        text += "У вас пока нет заготовок.\n"
-        text += "Нажмите кнопку ниже, чтобы добавить первую заготовку."
-    
+        text += "У вас пока нет быстрых ответов.\n"
+        text += "Нажмите кнопку ниже, чтобы добавить первый быстрый ответ."
+
     await callback.message.edit_text(
         text,
         reply_markup=get_templates_menu(templates)
@@ -75,21 +78,21 @@ async def callback_templates_menu(callback: CallbackQuery):
 
 @router.callback_query(F.data == CBT.ADD_TEMPLATE)
 async def callback_add_template(callback: CallbackQuery, state: FSMContext):
-    """Начать добавление новой заготовки"""
+    """Начать добавление нового быстрого ответа"""
     await callback.answer()
-    
+
     await state.set_state(TemplateStates.waiting_for_name)
-    
+
     await callback.message.edit_text(
-        "📝 <b>Добавление новой заготовки</b>\n\n"
-        "Отправьте название для заготовки ответа.\n\n"
+        "📝 <b>Добавление нового быстрого ответа</b>\n\n"
+        "Отправьте название для быстрого ответа.\n\n"
         "Например: <code>Приветствие</code>, <code>Благодарность</code>, <code>Отказ</code>"
     )
 
 
 @router.message(TemplateStates.waiting_for_name)
 async def process_template_name(message: Message, state: FSMContext):
-    """Обработка названия заготовки"""
+    """Обработка названия быстрого ответа"""
     name = message.text.strip()
     
     if not name or len(name) > 100:
@@ -104,14 +107,14 @@ async def process_template_name(message: Message, state: FSMContext):
     
     await message.answer(
         f"✅ Название: <b>{name}</b>\n\n"
-        "Теперь отправьте текст заготовки.\n\n"
+        "Теперь отправьте текст быстрого ответа.\n\n"
         "Это сообщение будет отправляться пользователям."
     )
 
 
 @router.message(TemplateStates.waiting_for_text)
 async def process_template_text(message: Message, state: FSMContext):
-    """Обработка текста заготовки"""
+    """Обработка текста быстрого ответа"""
     text = message.text.strip()
     
     if not text or len(text) > 4096:
@@ -134,15 +137,15 @@ async def process_template_text(message: Message, state: FSMContext):
     templates = template_manager.get_all()
     
     await message.answer(
-        f"✅ Заготовка <b>{name}</b> успешно добавлена!\n\n"
-        f"Всего заготовок: <b>{len(templates)}</b>",
+        f"✅ Быстрый ответ <b>{name}</b> успешно добавлен!\n\n"
+        f"Всего быстрых ответов: <b>{len(templates)}</b>",
         reply_markup=get_templates_menu(templates)
     )
 
 
 @router.callback_query(F.data.startswith(f"{CBT.TEMPLATE_DETAIL}:"))
 async def callback_template_detail(callback: CallbackQuery):
-    """Просмотр деталей заготовки"""
+    """Просмотр деталей быстрого ответа"""
     await callback.answer()
     
     template_id = callback.data.split(":")[1]
@@ -152,14 +155,14 @@ async def callback_template_detail(callback: CallbackQuery):
     
     if not template:
         await callback.message.edit_text(
-            "❌ Заготовка не найдена",
+            "❌ Быстрый ответ не найден",
             reply_markup=get_templates_menu(template_manager.get_all())
         )
         return
     
     text = (
         f"📝 <b>{template['name']}</b>\n\n"
-        f"<b>Текст заготовки:</b>\n{template['text']}\n\n"
+        f"<b>Текст быстрого ответа:</b>\n{template['text']}\n\n"
         f"<b>ID:</b> <code>{template['id']}</code>"
     )
     
@@ -171,33 +174,33 @@ async def callback_template_detail(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith(f"{CBT.DELETE_TEMPLATE}:"))
 async def callback_delete_template(callback: CallbackQuery):
-    """Удалить заготовку"""
+    """Удалить быстрый ответ"""
     template_id = callback.data.split(":")[1]
     
     template_manager = get_template_manager()
     template = template_manager.get_by_id(template_id)
     
     if not template:
-        await callback.answer("❌ Заготовка не найдена", show_alert=True)
+        await callback.answer("❌ Быстрый ответ не найден", show_alert=True)
         return
     
     name = template['name']
     success = template_manager.delete(template_id)
     
     if success:
-        await callback.answer(f"✅ Заготовка '{name}' удалена", show_alert=False)
+        await callback.answer(f"✅ Быстрый ответ '{name}' удалён", show_alert=False)
         
         # Возвращаем к списку заготовок
         templates = template_manager.get_all()
         
-        text = "📝 <b>Заготовки ответов</b>\n\n"
-        
+        text = "📝 <b>Быстрые ответы</b>\n\n"
+
         if templates:
-            text += f"Всего заготовок: <b>{len(templates)}</b>\n\n"
-            text += "Выберите заготовку для просмотра или редактирования:"
+            text += f"Всего быстрых ответов: <b>{len(templates)}</b>\n\n"
+            text += "Выберите быстрый ответ для просмотра или редактирования:"
         else:
-            text += "У вас пока нет заготовок.\n"
-            text += "Нажмите кнопку ниже, чтобы добавить первую заготовку."
+            text += "У вас пока нет быстрых ответов.\n"
+            text += "Нажмите кнопку ниже, чтобы добавить первый быстрый ответ."
         
         await callback.message.edit_text(
             text,
@@ -209,13 +212,14 @@ async def callback_delete_template(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith(f"{CBT.SELECT_TEMPLATE}:"))
 async def callback_select_template(callback: CallbackQuery, starvell=None, **kwargs):
-    """Выбрать и отправить заготовку пользователю"""
+    """Выбрать и отправить быстрый ответ пользователю"""
     await callback.answer()
     
     # Формат: SELECT_TEMPLATE:template_id:chat_id
     parts = callback.data.split(":")
     template_id = parts[1]
-    chat_id = int(parts[2]) if len(parts) > 2 else None
+    # chat_id can be a Starvell UUID string or a numeric ID; preserve as string
+    chat_id = parts[2] if len(parts) > 2 else None
     
     if not chat_id:
         await callback.answer("❌ Не указан чат", show_alert=True)
@@ -225,7 +229,7 @@ async def callback_select_template(callback: CallbackQuery, starvell=None, **kwa
     template = template_manager.get_by_id(template_id)
     
     if not template:
-        await callback.answer("❌ Заготовка не найдена", show_alert=True)
+        await callback.answer("❌ Быстрый ответ не найден", show_alert=True)
         return
     
     # Отправляем сообщение через Starvell API
