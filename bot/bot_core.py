@@ -58,23 +58,23 @@ async def main():
         BotCommand(command="update", description="🔄 Обновить бота"),
         BotCommand(command="logs", description="📋 Получить логи"),
         BotCommand(command="restart", description="🔁 Перезапустить бота"),
+        BotCommand(command="session_cookie", description="🔑 Обновить session_cookie"),
     ]
     await bot.set_my_commands(commands)
     logger.info("Меню команд установлено")
     
-    # Устанавливаем описание и "что может делать бот"
     try:
-        # Короткое описание (показывается в списке ботов) - БЕЗ HTML!
         await bot.set_my_short_description(
-            "🤖 Starvell Cardinal - автоматизация для Starvell.com"
+            "🤖 Starvell Cardinal - автоматизация для Starvell.com\n\n📢 Новости: @Starvell_cardinal\n🐞 Плагины: @Starvell_plugins"
         )
         
-        # Полное описание (показывается при открытии бота)
         description = (
             "🔥 Starvell Cardinal - мощный бот для автоматизации работы на Starvell.com\n\n"
             "Контакты:\n"
-            "🛠 github.com/Hackep1551/Starvell-cardinal\n"
-            "💬 @kapystus"
+            "🛠 Сделано с помощью: github.com/Hackep1551/Starvell-cardinal\n"
+            "💬 Автор: @kapystus\n"
+            "📢 Канал с новостями: t.me/Starvell_cardinal\n"
+            "🐞 Канал с плагинами: t.me/Starvell_plugins\n"
         )
         await bot.set_my_description(description)
         logger.info("Описание бота установлено")

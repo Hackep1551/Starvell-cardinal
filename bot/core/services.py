@@ -16,6 +16,7 @@ class StarvellService:
         self.db = db
         self.api: Optional[StarAPI] = None
         self._lock = asyncio.Lock()
+        self._session_error_notified = False  # Флаг для уведомления об ошибке сессии (1 раз)
         
     async def start(self):
         """Запустить сервис"""
@@ -24,17 +25,56 @@ class StarvellService:
             user_agent=BotConfig.USER_AGENT()
         )
         await self.api.session.start()
+        # Сбрасываем флаг при старте/перезапуске
+        self._session_error_notified = False
         
     async def stop(self):
         """Остановить сервис"""
         if self.api:
             await self.api.close()
+    
+    async def _notify_session_error(self):
+        """Отправить уведомление об ошибке сессии (только один раз)"""
+        if self._session_error_notified:
+            return
+        
+        self._session_error_notified = True
+        
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error("⚠️ СЕССИЯ STARVELL УСТАРЕЛА! Токен невалиден или истёк. Обновите session_cookie в конфигурации.")
+        
+        # Пытаемся отправить уведомление админам
+        try:
+            from bot.core.notifications import get_notification_manager
+            notification_manager = get_notification_manager()
+            if notification_manager:
+                await notification_manager.notify_all_admins(
+                    "error",
+                    "⚠️ <b>Сессия Starvell устарела!</b>\n\n"
+                    "Токен (session_cookie) невалиден или истёк.\n"
+                    "Starvell сбросил сессию.\n\n"
+                    "🔧 <b>Необходимо:</b>\n"
+                    "1. Получить новый session_cookie из браузера\n"
+                    "2. Обновить его в конфигурации (_main.cfg)\n"
+                    "3. Перезапустить бота",
+                    force=True
+                )
+        except Exception as e:
+            logger.error(f"Не удалось отправить уведомление об ошибке сессии: {e}")
             
     async def get_user_info(self) -> Dict[str, Any]:
         """Получить информацию о пользователе"""
         if not self.api:
             raise RuntimeError("API не инициализирован")
-        return await self.api.get_user_info()
+        
+        try:
+            return await self.api.get_user_info()
+        except Exception as e:
+            from api.exceptions import NotFoundError
+            if isinstance(e, NotFoundError):
+                await self._notify_session_error()
+            raise
     
     async def get_user_profile(self, user_id: str) -> Optional[Dict[str, Any]]:
         """
@@ -54,9 +94,15 @@ class StarvellService:
         """Получить список чатов"""
         if not self.api:
             raise RuntimeError("API не инициализирован")
-            
-        data = await self.api.get_chats()
-        return data.get("pageProps", {}).get("chats", [])
+        
+        try:
+            data = await self.api.get_chats()
+            return data.get("pageProps", {}).get("chats", [])
+        except Exception as e:
+            from api.exceptions import NotFoundError
+            if isinstance(e, NotFoundError):
+                await self._notify_session_error()
+            raise
         
     async def get_unread_chats(self) -> List[Dict[str, Any]]:
         """Получить чаты с непрочитанными сообщениями"""
@@ -67,7 +113,14 @@ class StarvellService:
         """Получить сообщения из чата"""
         if not self.api:
             raise RuntimeError("API не инициализирован")
-        return await self.api.get_messages(chat_id, limit)
+        
+        try:
+            return await self.api.get_messages(chat_id, limit)
+        except Exception as e:
+            from api.exceptions import NotFoundError
+            if isinstance(e, NotFoundError):
+                await self._notify_session_error()
+            raise
         
     async def send_message(self, chat_id: str, content: str) -> Dict[str, Any]:
         """Отправить сообщение в чат"""
@@ -89,9 +142,16 @@ class StarvellService:
         """Получить список заказов"""
         if not self.api:
             raise RuntimeError("API не инициализирован")
-            
-        data = await self.api.get_sells()
-        return data.get("pageProps", {}).get("orders", [])
+        
+        try:
+            data = await self.api.get_sells()
+            return data.get("pageProps", {}).get("orders", [])
+        except Exception as e:
+            # Проверяем, является ли это ошибкой NotFound (обычно устаревшая сессия)
+            from api.exceptions import NotFoundError
+            if isinstance(e, NotFoundError):
+                await self._notify_session_error()
+            raise
         
     async def refund_order(self, order_id: str) -> Dict[str, Any]:
         """Вернуть деньги за заказ"""
@@ -137,6 +197,9 @@ class StarvellService:
                 
                 return result
             except Exception as e:
+                from api.exceptions import NotFoundError
+                if isinstance(e, NotFoundError):
+                    await self._notify_session_error()
                 await self.db.add_bump_history(game_id, category_ids, False)
                 raise
                 
@@ -243,6 +306,9 @@ class StarvellService:
             offers = await self.api.get_user_offers(user_id)
             return offers
         except Exception as e:
+            from api.exceptions import NotFoundError
+            if isinstance(e, NotFoundError):
+                await self._notify_session_error()
             raise RuntimeError(f"Ошибка получения лотов: {e}")
     
     async def activate_lot(self, lot_id: str, amount: Optional[int] = None) -> bool:

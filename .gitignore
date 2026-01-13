@@ -5,6 +5,7 @@ configs/
 # Хранилище данных
 storage/
 data/
+.github/
 
 # Логи
 logs/
