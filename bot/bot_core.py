@@ -141,11 +141,10 @@ async def main():
         # Проверяем авторизацию
         user_info = await starvell.get_user_info()
         if not user_info.get("authorized"):
-            logger.error("Не удалось авторизоваться в Starvell!")
+            # Не отправляем нотификацию здесь, чтобы не дублировать логику
+            # уведомления, уже реализованную в StarvellService._notify_session_error().
+            logger.error("Не удалось авторизоваться в Starvell! Продолжаю работу без авторизации.")
             logger.error("Проверьте session_cookie в configs/_main.cfg")
-            await starvell.stop()
-            await db.close()
-            return
             
         user = user_info.get("user", {})
         logger.info(f"Авторизован как: {user.get('username')} (ID: {user.get('id')})")
