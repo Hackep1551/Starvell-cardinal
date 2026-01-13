@@ -46,6 +46,11 @@ class ReplyState(StatesGroup):
     waiting_for_reply = State()
 
 
+class SessionState(StatesGroup):
+    """Состояния для обновления session_cookie"""
+    waiting_for_cookie = State()
+
+
 # === Функции авторизации ===
 
 def hash_password(password: str) -> str:
@@ -175,6 +180,109 @@ async def cmd_changelog(message: Message, **kwargs):
         
     except Exception as e:
         await message.answer(f"❌ Ошибка при чтении CHANGELOG: {e}")
+
+
+
+@router.message(Command("session_cookie"))
+async def cmd_session_cookie(message: Message, starvell, **kwargs):
+    """Команда /session_cookie <cookie> — обновить session_cookie и перезапустить подключение к Starvell"""
+    # Проверяем авторизацию
+    if not is_user_authorized(message.from_user.id):
+        return
+
+    # Разрешаем ввод в том же сообщении: /session_cookie <value>
+    parts = message.text.split(None, 1)
+    if len(parts) == 1:
+        # Запускаем FSM — ждём, пока пользователь отправит новый ключ в следующем сообщении
+        await message.answer(
+            "✉️ Отправьте новый <b>session_cookie</b> сообщением в этом чате.\n\n"
+            "Для отмены отправьте /cancel",
+            parse_mode="HTML"
+        )
+        await message.answer(
+            "ℹ️ Примечание: рекомендуется отправлять ключ в личном чате с ботом, чтобы он не оказался в групповой переписке."
+        )
+        await message.answer("⏳ Жду новый session_cookie...")
+        await kwargs.get('state').set_state(SessionState.waiting_for_cookie)
+        return
+
+    new_cookie = parts[1].strip()
+    if not new_cookie:
+        await message.answer("❌ Пустое значение session_cookie. Попробуйте ещё раз.")
+        return
+
+    # Сохраняем в конфиг
+    try:
+        config = get_config_manager()
+        config.set('Starvell', 'session_cookie', new_cookie)
+        # Применяем изменения в рантайме
+        BotConfig.reload()
+    except Exception as e:
+        await message.answer(f"❌ Не удалось сохранить конфигурацию: {e}")
+        return
+
+    await message.answer("✅ session_cookie обновлён в конфиге. Попытка перезапустить подключение к Starvell...")
+
+    # Перезапускаем StarvellService (если он доступен через injected dependency)
+    try:
+        # starvell — это экземпляр StarvellService, прокинутый в workflow_data
+        await starvell.stop()
+        await starvell.start()
+        # После старта флаг _session_error_notified уже сброшен в start()
+        # Проверяем авторизацию
+        user_info = await starvell.get_user_info()
+        if user_info.get('authorized'):
+            await message.answer("✅ Успешно авторизован в Starvell. Все службы могут продолжить работу.")
+        else:
+            await message.answer("⚠️ Перезапуск выполнен, но авторизация не удалась. Проверьте session_cookie и при необходимости перезапустите бота вручную.")
+    except Exception as e:
+        await message.answer(f"❌ Ошибка при перезапуске сервиса Starvell: {e}")
+        import logging
+        logging.getLogger(__name__).exception("Ошибка при перезапуске StarvellService")
+
+
+
+@router.message(SessionState.waiting_for_cookie)
+async def process_session_cookie_input(message: Message, state: FSMContext, starvell=None, **kwargs):
+    """Обработка введённого session_cookie из FSM"""
+    # Только авторизованный админ может вводить
+    if not is_user_authorized(message.from_user.id):
+        await message.answer("🔒 Только администратор может обновлять session_cookie")
+        await state.clear()
+        return
+
+    new_cookie = (message.text or "").strip()
+    if not new_cookie:
+        await message.answer("❌ Пустой ключ. Отправьте /session_cookie и попробуйте снова.")
+        await state.clear()
+        return
+
+    await message.answer("🔁 Сохраняю новый ключ и перезапускаю подключение...")
+
+    try:
+        config = get_config_manager()
+        config.set('Starvell', 'session_cookie', new_cookie)
+        BotConfig.reload()
+
+        if starvell:
+            await starvell.stop()
+            await starvell.start()
+
+            # Проверяем авторизацию
+            user_info = await starvell.get_user_info()
+            if user_info.get('authorized'):
+                await message.answer("✅ Ключ успешно обновлён и авторизация выполнена.")
+            else:
+                await message.answer("⚠️ Ключ сохранён, но авторизация не удалась. Проверьте значение session_cookie.")
+        else:
+            await message.answer("✅ Ключ сохранён в конфиге. Перезапустите бота вручную для применения.")
+
+    except Exception as e:
+        await message.answer(f"❌ Ошибка при обновлении ключа: {e}")
+        import logging
+        logging.getLogger(__name__).exception("Ошибка при обновлении session_cookie")
+
+    await state.clear()
 
 
 @router.message(Command("profile"))
