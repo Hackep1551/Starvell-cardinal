@@ -17,6 +17,7 @@ class CBT:
     GLOBAL_SWITCHES = "global"
     NOTIFICATIONS = "notif"
     PLUGINS = "plugins"
+    ABOUT = "about"
     AUTO_DELIVERY = "autodelivery"
     BLACKLIST = "blacklist"
     TEMPLATES = "templates"
@@ -39,8 +40,6 @@ class CBT:
     
     # Авторизованные пользователи
     REMOVE_AUTH_USER = "rm_auth"
-    
-    # Язык
     
     # Переключатели
     SWITCH_AUTO_BUMP = "switch:auto_bump"
@@ -146,6 +145,12 @@ def get_main_menu(update_available: bool = False) -> InlineKeyboardMarkup:
             InlineKeyboardButton(
                 text="🔌 Плагины",
                 callback_data=CBT.PLUGINS
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="ℹ️ О боте",
+                callback_data=CBT.ABOUT
             ),
         ],
         [

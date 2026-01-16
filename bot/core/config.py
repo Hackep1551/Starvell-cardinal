@@ -74,7 +74,7 @@ class ConfigManager:
             'reviewResponseText': 'Благодарю за отзыв! Рад был помочь.'
         }
         
-        self._config['Monitor'] = {
+        self._config['Monitor'] = { # Устарело, оставить для совместимости
             'chatPollInterval': '5',
             'ordersPollInterval': '10',
             'remoteInfoInterval': '120'

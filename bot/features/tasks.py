@@ -39,7 +39,7 @@ class BackgroundTasks:
     def start(self):
         """Запустить фоновые задачи"""
         # Проверка новых сообщений 
-        chat_interval = get_config_manager().get('Monitor', 'chatPollInterval', 5)
+        chat_interval = 10 # TODO: Фиксануть этот костыль (ебучий starvell подняли ограничение на 6 запросов в минуту)
         self.scheduler.add_job(
             self._check_new_messages_loop,
             'interval',

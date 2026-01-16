@@ -82,7 +82,19 @@ async def cmd_start(message: Message, state: FSMContext, auto_update, **kwargs):
     
     # Проверяем авторизацию
     if not is_user_authorized(message.from_user.id):
-        await message.answer("🔒 Для доступа к боту введите пароль:")
+        # Показываем приглашение ввести пароль и кнопку с ссылкой на репозиторий
+        try:
+            repo_kb = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(
+                    text="Хочу такого же бота",
+                    url="https://github.com/Hackep1551/Starvell-cardinal"
+                )]
+            ])
+            await message.answer("🔒 Для доступа к боту введите пароль:", reply_markup=repo_kb)
+        except Exception:
+            # На случай редких проблем со сборкой клавиатуры просто отправим текст
+            await message.answer("🔒 Для доступа к боту введите пароль:")
+
         await state.set_state(AuthState.waiting_for_password)
         return
     
@@ -1049,6 +1061,28 @@ async def callback_plugins_menu(callback: CallbackQuery, plugin_manager, **kwarg
     text += f"❌ Отключенных: <code>{disabled_count}</code>\n\n"
     text += "⚠️ После активации/деактивации/удаления плагина необходимо перезапустить бота! /restart"
     
+    await callback.message.edit_text(text, reply_markup=keyboard)
+
+
+@router.callback_query(F.data == CBT.ABOUT)
+async def callback_about(callback: CallbackQuery):
+    """Показать информацию о боте и ссылки автора"""
+    await callback.answer()
+
+    text = (
+        "ℹ️ <b>О боте</b>\n\n"
+        "Starvell Cardinal — автоматизационный бот для Starvell.com.\n\n"
+        "Автор: @kapystus\n"
+        "Исходный код: https://github.com/Hackep1551/Starvell-cardinal\n"
+        "Канал с новостями: https://t.me/Starvell_cardinal\n"
+        "Канал с плагинами: https://t.me/Starvell_plugins\n"
+    )
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔗 GitHub", url="https://github.com/Hackep1551/Starvell-cardinal")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data=CBT.MAIN)]
+    ])
+
     await callback.message.edit_text(text, reply_markup=keyboard)
 
 
