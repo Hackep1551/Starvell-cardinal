@@ -54,6 +54,7 @@ class ColoredFormatter(logging.Formatter):
 
 # Создаём папку для логов если её нет
 from pathlib import Path
+from logging.handlers import RotatingFileHandler
 logs_dir = Path("logs")
 logs_dir.mkdir(exist_ok=True)
 
@@ -61,7 +62,13 @@ logs_dir.mkdir(exist_ok=True)
 console_handler = logging.StreamHandler(sys.stdout)
 console_handler.setFormatter(ColoredFormatter())
 
-file_handler = logging.FileHandler('logs/bot.log', encoding='utf-8')
+# Ротация логов: макс 5MB на файл, до 10 бэкапов (bot.log, bot.log.1, bot.log.2, ...)
+file_handler = RotatingFileHandler(
+    'logs/bot.log', 
+    encoding='utf-8',
+    maxBytes=5*1024*1024,  # 5MB
+    backupCount=10
+)
 file_handler.setFormatter(logging.Formatter(
     '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 ))

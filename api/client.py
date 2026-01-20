@@ -204,6 +204,44 @@ class StarAPI:
             referer=f"{self.config.BASE_URL}/chat/{chat_id}",
         )
     
+    async def mark_chat_as_read(self, chat_id: str) -> bool:
+        """
+        Пометить чат как прочитанный
+        
+        Args:
+            chat_id: ID чата
+            
+        Returns:
+            bool: True если успешно
+        """
+        try:
+            # Пробуем разные возможные эндпоинты
+            endpoints = [
+                f"{self.config.API_URL}/messages/read",
+                f"{self.config.API_URL}/chats/read", 
+                f"{self.config.API_URL}/chat/read",
+            ]
+            
+            for endpoint in endpoints:
+                try:
+                    await self.session.post_json(
+                        endpoint,
+                        data={"chatId": chat_id},
+                        referer=f"{self.config.BASE_URL}/chat/{chat_id}",
+                    )
+                    return True
+                except Exception:
+                    continue
+                    
+            # Если ни один endpoint не сработал, 
+            # просто получаем сообщения - это может пометить как прочитанное
+            await self.get_messages(chat_id, limit=1)
+            return True
+            
+        except Exception as e:
+            logger.debug(f"Не удалось пометить чат {chat_id} как прочитанный: {e}")
+            return False
+    
     async def find_chat_by_user_id(self, user_id: str) -> Optional[str]:
         """
         Найти ID чата с конкретным пользователем

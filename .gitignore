@@ -7,6 +7,9 @@ storage/
 data/
 .github/
 
+# Тесты
+test/
+
 # Логи
 logs/
 !logs/.gitkeep

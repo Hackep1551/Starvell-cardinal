@@ -132,6 +132,12 @@ class StarvellService:
             await self.db.add_sent_message(chat_id, content)
             return result
     
+    async def mark_chat_as_read(self, chat_id: str) -> bool:
+        """Пометить чат как прочитанный"""
+        if not self.api:
+            raise RuntimeError("API не инициализирован")
+        return await self.api.mark_chat_as_read(chat_id)
+    
     async def find_chat_by_user_id(self, user_id: str) -> Optional[str]:
         """Найти ID чата с конкретным пользователем"""
         if not self.api:
@@ -209,13 +215,30 @@ class StarvellService:
         return sum(chat.get("unreadCount", 0) for chat in chats)
         
     async def check_new_messages(self) -> List[Dict[str, Any]]:
-        """Проверить новые сообщения"""
+        """
+        Проверить новые сообщения
+        
+        ОПТИМИЗИРОВАНО: проверяем только чаты с непрочитанными сообщениями
+        вместо всех чатов, чтобы снизить количество API запросов.
+        """
+        import logging
+        from bot.core.config import BotConfig
+        logger = logging.getLogger(__name__)
+        
         new_messages = []
         
-        # Получаем ВСЕ чаты (не только с unread)
+        # Получаем все чаты
         chats = await self.get_chats()
         
-        for chat in chats:
+        # ОПТИМИЗАЦИЯ: фильтруем только чаты с непрочитанными сообщениями
+        unread_chats = [c for c in chats if c.get("unreadCount", 0) > 0]
+        
+        logger.debug(f"📬 Всего чатов: {len(chats)}, с непрочитанными: {len(unread_chats)}")
+        
+        # Проверяем настройку авто-прочтения
+        auto_read_enabled = BotConfig.AUTO_READ_ENABLED()
+        
+        for chat in unread_chats:
             chat_id = chat.get("id")
             if not chat_id:
                 continue
@@ -234,29 +257,38 @@ class StarvellService:
                 latest_id = messages[0].get("id")
                 if latest_id:
                     await self.db.set_last_message(chat_id, latest_id)
+                # Помечаем как прочитанное (если включено)
+                if auto_read_enabled:
+                    await self.mark_chat_as_read(chat_id)
                 continue
             
             # Фильтруем новые (все сообщения после last_known_id)
-            found_last_known = False
+            chat_new_messages = []
             for msg in messages:
                 msg_id = msg.get("id")
                 
                 if msg_id == last_known_id:
-                    found_last_known = True
                     break
                     
                 # Это новое сообщение
-                new_messages.append({
+                chat_new_messages.append({
                     "chat_id": chat_id,
                     "message": msg,
                     "chat": chat,
                 })
+            
+            # Добавляем в общий список
+            new_messages.extend(chat_new_messages)
                     
             # Обновляем последнее сообщение
             if messages:
                 latest_id = messages[0].get("id")
                 if latest_id:
                     await self.db.set_last_message(chat_id, latest_id)
+            
+            # Помечаем чат как прочитанный после обработки (если включено)
+            if auto_read_enabled:
+                await self.mark_chat_as_read(chat_id)
                     
         return new_messages
         

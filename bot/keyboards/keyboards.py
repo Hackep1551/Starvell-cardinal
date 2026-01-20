@@ -2,10 +2,13 @@
 Клавиатуры для бота
 """
 
+import logging
 from aiogram.types import (
     InlineKeyboardMarkup,
     InlineKeyboardButton,
 )
+
+logger = logging.getLogger(__name__)
 
 
 # === База данных ===
@@ -45,10 +48,18 @@ class CBT:
     SWITCH_AUTO_BUMP = "switch:auto_bump"
     SWITCH_AUTO_DELIVERY = "switch:auto_delivery"
     SWITCH_AUTO_RESTORE = "switch:auto_restore"
+    SWITCH_AUTO_READ = "switch:auto_read"
+    SWITCH_AUTO_TICKET = "switch:auto_ticket"
     SWITCH_AUTO_UPDATE = "switch:auto_update"
     SWITCH_AUTO_INSTALL = "switch:auto_install"
     SWITCH_ORDER_CONFIRM = "switch:order_confirm"
     SWITCH_REVIEW_RESPONSE = "switch:review_resp"
+    
+    # Настройки авто-тикета
+    AUTO_TICKET_SETTINGS = "autoticket_settings"
+    AUTO_TICKET_SET_INTERVAL = "autoticket_set_interval"
+    AUTO_TICKET_SET_MAX = "autoticket_set_max"
+    SWITCH_AUTO_TICKET_NOTIFY = "switch:autoticket_notify"
     
     # Уведомления
     NOTIF_MESSAGES = "notif:messages"
@@ -221,6 +232,8 @@ def get_global_switches_menu(
     auto_bump: bool, 
     auto_delivery: bool, 
     auto_restore: bool, 
+    auto_read: bool = True,
+    auto_ticket: bool = False,
     auto_install: bool = False,
     order_confirm: bool = False,
     review_response: bool = False
@@ -252,6 +265,12 @@ def get_global_switches_menu(
         ],
         [
             InlineKeyboardButton(
+                text=switch_text("Авто-прочтение чатов", auto_read),
+                callback_data=CBT.SWITCH_AUTO_READ
+            ),
+        ],
+        [
+            InlineKeyboardButton(
                 text=switch_text("Ответ на подтверждение заказа", order_confirm),
                 callback_data=CBT.SWITCH_ORDER_CONFIRM
             ),
@@ -260,6 +279,12 @@ def get_global_switches_menu(
             InlineKeyboardButton(
                 text=switch_text("Ответ на отзыв", review_response),
                 callback_data=CBT.SWITCH_REVIEW_RESPONSE
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text=switch_text("Авто-тикет (бета-тест)", auto_ticket),
+                callback_data=CBT.AUTO_TICKET_SETTINGS
             ),
         ],
         [
@@ -824,12 +849,25 @@ def get_select_template_menu(chat_id: str, templates: list = None) -> InlineKeyb
     
     if templates:
         for template in templates:
-            keyboard.append([
-                InlineKeyboardButton(
-                    text=f"📝 {template['name']}",
-                    callback_data=f"{CBT.SELECT_TEMPLATE}:{template['id']}:{chat_id}"
-                )
-            ])
+            callback_data = f"{CBT.SELECT_TEMPLATE}:{template['id']}:{chat_id}"
+            # Проверяем длину callback_data (лимит Telegram - 64 байта)
+            if len(callback_data.encode('utf-8')) <= 64:
+                keyboard.append([
+                    InlineKeyboardButton(
+                        text=f"📝 {template['name']}",
+                        callback_data=callback_data
+                    )
+                ])
+            else:
+                # Если callback_data слишком длинный, используем только template_id
+                # Обработчик должен будет искать chat_id из контекста сообщения
+                logger.warning(f"Callback data слишком длинный ({len(callback_data.encode('utf-8'))} байт), используем короткую версию")
+                keyboard.append([
+                    InlineKeyboardButton(
+                        text=f"📝 {template['name']}",
+                        callback_data=f"{CBT.SELECT_TEMPLATE}:{template['id']}"
+                    )
+                ])
     else:
         keyboard.append([
             InlineKeyboardButton(
@@ -920,6 +958,48 @@ def get_review_response_menu(enabled: bool, text: str) -> InlineKeyboardMarkup:
             InlineKeyboardButton(
                 text="🔙 Назад",
                 callback_data=CBT.MAIN_PAGE_2
+            )
+        ]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_auto_ticket_settings_menu(
+    enabled: bool,
+    interval: int,
+    max_orders: int,
+    notify: bool
+) -> InlineKeyboardMarkup:
+    """Меню настроек авто-тикета"""
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                text=f"{'✅' if enabled else '❌'} Статус: {'Включено' if enabled else 'Выключено'}",
+                callback_data=CBT.SWITCH_AUTO_TICKET
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text=f"⏱ Интервал: {interval} сек",
+                callback_data=CBT.AUTO_TICKET_SET_INTERVAL
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text=f"🔢 Макс. заказов: {max_orders}",
+                callback_data=CBT.AUTO_TICKET_SET_MAX
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text=f"{'🔔' if notify else '🔕'} Уведомления: {'Вкл' if notify else 'Выкл'}",
+                callback_data=CBT.SWITCH_AUTO_TICKET_NOTIFY
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="🔙 Назад",
+                callback_data=CBT.GLOBAL_SWITCHES
             )
         ]
     ]

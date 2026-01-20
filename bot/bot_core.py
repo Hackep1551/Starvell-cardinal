@@ -111,6 +111,12 @@ async def main():
     # Сервис автоответов
     auto_response = AutoResponseService(starvell, db)
     
+    # Сервис авто-тикетов
+    from bot.features.autoticket import init_autoticket_service
+    # Получаем сессию напрямую из конфига
+    session_cookie = get_config_manager().get('Starvell', 'session', '')
+    autoticket_service = init_autoticket_service(session_cookie)
+    
     # Менеджер плагинов
     plugin_manager = PluginManager()
     plugin_manager.load_plugins()
@@ -178,6 +184,7 @@ async def main():
         "auto_raise": auto_raise,
         "auto_update": auto_update,
         "auto_response": auto_response,
+        "autoticket_service": autoticket_service,
         "plugin_manager": plugin_manager,
     })
     

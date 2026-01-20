@@ -781,6 +781,8 @@ async def callback_global_switches(callback: CallbackQuery):
     auto_bump = BotConfig.AUTO_BUMP_ENABLED()
     auto_delivery = BotConfig.AUTO_DELIVERY_ENABLED()
     auto_restore = BotConfig.AUTO_RESTORE_ENABLED()
+    auto_read = BotConfig.AUTO_READ_ENABLED()
+    auto_ticket = BotConfig.AUTO_TICKET_ENABLED()
     auto_install = BotConfig.AUTO_UPDATE_INSTALL()
     order_confirm = BotConfig.ORDER_CONFIRM_RESPONSE_ENABLED()
     review_response = BotConfig.REVIEW_RESPONSE_ENABLED()
@@ -790,7 +792,7 @@ async def callback_global_switches(callback: CallbackQuery):
     
     await callback.message.edit_text(
         status_text,
-        reply_markup=get_global_switches_menu(auto_bump, auto_delivery, auto_restore, auto_install, order_confirm, review_response)
+        reply_markup=get_global_switches_menu(auto_bump, auto_delivery, auto_restore, auto_read, auto_ticket, auto_install, order_confirm, review_response)
     )
 
 
@@ -816,6 +818,8 @@ async def callback_switch_auto_bump(callback: CallbackQuery, auto_raise=None, **
     auto_bump = not current
     auto_delivery = BotConfig.AUTO_DELIVERY_ENABLED()
     auto_restore = BotConfig.AUTO_RESTORE_ENABLED()
+    auto_read = BotConfig.AUTO_READ_ENABLED()
+    auto_ticket = BotConfig.AUTO_TICKET_ENABLED()
     auto_install = BotConfig.AUTO_UPDATE_INSTALL()
     order_confirm = BotConfig.ORDER_CONFIRM_RESPONSE_ENABLED()
     review_response = BotConfig.REVIEW_RESPONSE_ENABLED()
@@ -824,7 +828,7 @@ async def callback_switch_auto_bump(callback: CallbackQuery, auto_raise=None, **
     
     await callback.message.edit_text(
         status_text,
-        reply_markup=get_global_switches_menu(auto_bump, auto_delivery, auto_restore, auto_install, order_confirm, review_response)
+        reply_markup=get_global_switches_menu(auto_bump, auto_delivery, auto_restore, auto_read, auto_ticket, auto_install, order_confirm, review_response)
     )
 
 
@@ -846,6 +850,8 @@ async def callback_switch_auto_delivery(callback: CallbackQuery):
     auto_bump = BotConfig.AUTO_BUMP_ENABLED()
     auto_delivery = not current
     auto_restore = BotConfig.AUTO_RESTORE_ENABLED()
+    auto_read = BotConfig.AUTO_READ_ENABLED()
+    auto_ticket = BotConfig.AUTO_TICKET_ENABLED()
     auto_install = BotConfig.AUTO_UPDATE_INSTALL()
     order_confirm = BotConfig.ORDER_CONFIRM_RESPONSE_ENABLED()
     review_response = BotConfig.REVIEW_RESPONSE_ENABLED()
@@ -854,7 +860,7 @@ async def callback_switch_auto_delivery(callback: CallbackQuery):
     
     await callback.message.edit_text(
         status_text,
-        reply_markup=get_global_switches_menu(auto_bump, auto_delivery, auto_restore, auto_install, order_confirm, review_response)
+        reply_markup=get_global_switches_menu(auto_bump, auto_delivery, auto_restore, auto_read, auto_ticket, auto_install, order_confirm, review_response)
     )
 
 
@@ -865,9 +871,6 @@ async def callback_switch_auto_restore(callback: CallbackQuery):
     current = BotConfig.AUTO_RESTORE_ENABLED()
     BotConfig.update(**{"auto_restore.enabled": not current})
     
-    # Загружаем текущий язык
-    
-    
     # Уведомление об изменении
     status = "включено" if not current else "выключено"
     await callback.answer(f"Авто-восстановление {status}", show_alert=False)
@@ -876,6 +879,8 @@ async def callback_switch_auto_restore(callback: CallbackQuery):
     auto_bump = BotConfig.AUTO_BUMP_ENABLED()
     auto_delivery = BotConfig.AUTO_DELIVERY_ENABLED()
     auto_restore = not current
+    auto_read = BotConfig.AUTO_READ_ENABLED()
+    auto_ticket = BotConfig.AUTO_TICKET_ENABLED()
     auto_install = BotConfig.AUTO_UPDATE_INSTALL()
     order_confirm = BotConfig.ORDER_CONFIRM_RESPONSE_ENABLED()
     review_response = BotConfig.REVIEW_RESPONSE_ENABLED()
@@ -884,7 +889,181 @@ async def callback_switch_auto_restore(callback: CallbackQuery):
     
     await callback.message.edit_text(
         status_text,
-        reply_markup=get_global_switches_menu(auto_bump, auto_delivery, auto_restore, auto_install, order_confirm, review_response)
+        reply_markup=get_global_switches_menu(auto_bump, auto_delivery, auto_restore, auto_read, auto_ticket, auto_install, order_confirm, review_response)
+    )
+
+
+@router.callback_query(F.data == CBT.SWITCH_AUTO_READ)
+async def callback_switch_auto_read(callback: CallbackQuery):
+    """Переключить авто-прочтение чатов"""
+    # Переключаем
+    current = BotConfig.AUTO_READ_ENABLED()
+    BotConfig.update(**{"auto_read.enabled": not current})
+    
+    # Уведомление об изменении
+    status = "включено" if not current else "выключено"
+    await callback.answer(f"Авто-прочтение чатов {status}", show_alert=False)
+    
+    # Обновляем меню
+    auto_bump = BotConfig.AUTO_BUMP_ENABLED()
+    auto_delivery = BotConfig.AUTO_DELIVERY_ENABLED()
+    auto_restore = BotConfig.AUTO_RESTORE_ENABLED()
+    auto_read = not current
+    auto_ticket = BotConfig.AUTO_TICKET_ENABLED()
+    auto_install = BotConfig.AUTO_UPDATE_INSTALL()
+    order_confirm = BotConfig.ORDER_CONFIRM_RESPONSE_ENABLED()
+    review_response = BotConfig.REVIEW_RESPONSE_ENABLED()
+    
+    status_text = "⚙️ <b>Глобальные переключатели</b>\n\nЗдесь вы можете включать и отключать основные функции бота.\n\n"
+    
+    await callback.message.edit_text(
+        status_text,
+        reply_markup=get_global_switches_menu(auto_bump, auto_delivery, auto_restore, auto_read, auto_ticket, auto_install, order_confirm, review_response)
+    )
+
+
+@router.callback_query(F.data == CBT.AUTO_TICKET_SETTINGS)
+async def callback_auto_ticket_settings(callback: CallbackQuery):
+    """Меню настроек авто-тикета"""
+    enabled = BotConfig.AUTO_TICKET_ENABLED()
+    interval = BotConfig.AUTO_TICKET_INTERVAL()
+    max_orders = BotConfig.AUTO_TICKET_MAX_ORDERS()
+    notify = BotConfig.NOTIFY_AUTO_TICKET()
+    
+    text = (
+        "🎫 <b>Настройки авто-тикета</b>\n\n"
+        "Бот будет автоматически создавать тикеты для неподтверждённых заказов.\n"
+        "Для работы требуется, чтобы бот был авторизован.\n\n"
+        f"Статус: <b>{'Включено ✅' if enabled else 'Выключено ❌'}</b>"
+    )
+    
+    await callback.message.edit_text(
+        text,
+        reply_markup=get_auto_ticket_settings_menu(enabled, interval, max_orders, notify)
+    )
+
+@router.callback_query(F.data == CBT.SWITCH_AUTO_TICKET)
+async def callback_switch_auto_ticket(callback: CallbackQuery):
+    """Переключить авто-тикет"""
+    # Переключаем
+    current = BotConfig.AUTO_TICKET_ENABLED()
+    BotConfig.update(**{"auto_ticket.enabled": not current})
+    
+    # Уведомление об изменении
+    status = "включен" if not current else "выключен"
+    await callback.answer(f"Авто-тикет {status}", show_alert=False)
+    
+    # Обновляем меню настроек (остаемся в нем)
+    enabled = not current
+    interval = BotConfig.AUTO_TICKET_INTERVAL()
+    max_orders = BotConfig.AUTO_TICKET_MAX_ORDERS()
+    notify = BotConfig.NOTIFY_AUTO_TICKET()
+    
+    text = (
+        "🎫 <b>Настройки авто-тикета</b>\n\n"
+        "Бот будет автоматически создавать тикеты для неподтверждённых заказов.\n"
+        "Для работы требуется, чтобы бот был авторизован.\n\n"
+        f"Статус: <b>{'Включено ✅' if enabled else 'Выключено ❌'}</b>"
+    )
+    
+    await callback.message.edit_text(
+        text,
+        reply_markup=get_auto_ticket_settings_menu(enabled, interval, max_orders, notify)
+    )
+
+
+@router.callback_query(F.data == CBT.SWITCH_AUTO_TICKET_NOTIFY)
+async def callback_switch_auto_ticket_notify(callback: CallbackQuery):
+    """Переключить уведомления авто-тикета"""
+    current = BotConfig.NOTIFY_AUTO_TICKET()
+    BotConfig.update(**{"notifications.auto_ticket": not current})
+    
+    await callback.answer(f"Уведомления {'включены' if not current else 'выключены'}", show_alert=False)
+    
+    # Обновляем меню
+    enabled = BotConfig.AUTO_TICKET_ENABLED()
+    interval = BotConfig.AUTO_TICKET_INTERVAL()
+    max_orders = BotConfig.AUTO_TICKET_MAX_ORDERS()
+    notify = not current
+    
+    text = (
+        "🎫 <b>Настройки авто-тикета</b>\n\n"
+        "Бот будет автоматически создавать тикеты для неподтверждённых заказов.\n"
+        "Для работы требуется, чтобы бот был авторизован.\n\n"
+        f"Статус: <b>{'Включено ✅' if enabled else 'Выключено ❌'}</b>"
+    )
+    
+    await callback.message.edit_text(
+        text,
+        reply_markup=get_auto_ticket_settings_menu(enabled, interval, max_orders, notify)
+    )
+
+
+@router.callback_query(F.data == CBT.AUTO_TICKET_SET_INTERVAL)
+async def callback_auto_ticket_set_interval(callback: CallbackQuery):
+    """Циклическое переключение интервала"""
+    current = BotConfig.AUTO_TICKET_INTERVAL()
+    # 30 мин -> 1 ч -> 3 ч -> 6 ч -> 12 ч -> 24 ч -> 30 мин
+    intervals = [1800, 3600, 10800, 21600, 43200, 86400]
+    
+    try:
+        next_idx = (intervals.index(current) + 1) % len(intervals)
+        new_val = intervals[next_idx]
+    except ValueError:
+        new_val = 3600
+        
+    BotConfig.update(**{"auto_ticket.interval": new_val})
+    await callback.answer(f"Интервал установлен: {new_val // 60} мин")
+    
+    # Обновляем меню
+    enabled = BotConfig.AUTO_TICKET_ENABLED()
+    max_orders = BotConfig.AUTO_TICKET_MAX_ORDERS()
+    notify = BotConfig.NOTIFY_AUTO_TICKET()
+    
+    text = (
+        "🎫 <b>Настройки авто-тикета</b>\n\n"
+        "Бот будет автоматически создавать тикеты для неподтверждённых заказов.\n"
+        "Для работы требуется, чтобы бот был авторизован.\n\n"
+        f"Статус: <b>{'Включено ✅' if enabled else 'Выключено ❌'}</b>"
+    )
+    
+    await callback.message.edit_text(
+        text,
+        reply_markup=get_auto_ticket_settings_menu(enabled, new_val, max_orders, notify)
+    )
+
+
+@router.callback_query(F.data == CBT.AUTO_TICKET_SET_MAX)
+async def callback_auto_ticket_set_max(callback: CallbackQuery):
+    """Циклическое переключение макс. заказов"""
+    current = BotConfig.AUTO_TICKET_MAX_ORDERS()
+    # 1 -> 3 -> 5 -> 10 -> 20 -> 1
+    values = [1, 3, 5, 10, 20]
+    
+    try:
+        next_idx = (values.index(current) + 1) % len(values)
+        new_val = values[next_idx]
+    except ValueError:
+        new_val = 5
+        
+    BotConfig.update(**{"auto_ticket.max_orders": new_val})
+    await callback.answer(f"Макс. заказов: {new_val}")
+    
+    # Обновляем меню
+    enabled = BotConfig.AUTO_TICKET_ENABLED()
+    interval = BotConfig.AUTO_TICKET_INTERVAL()
+    notify = BotConfig.NOTIFY_AUTO_TICKET()
+    
+    text = (
+        "🎫 <b>Настройки авто-тикета</b>\n\n"
+        "Бот будет автоматически создавать тикеты для неподтверждённых заказов.\n"
+        "Для работы требуется, чтобы бот был авторизован.\n\n"
+        f"Статус: <b>{'Включено ✅' if enabled else 'Выключено ❌'}</b>"
+    )
+    
+    await callback.message.edit_text(
+        text,
+        reply_markup=get_auto_ticket_settings_menu(enabled, interval, new_val, notify)
     )
 
 
@@ -903,6 +1082,8 @@ async def callback_switch_auto_install(callback: CallbackQuery):
     auto_bump = BotConfig.AUTO_BUMP_ENABLED()
     auto_delivery = BotConfig.AUTO_DELIVERY_ENABLED()
     auto_restore = BotConfig.AUTO_RESTORE_ENABLED()
+    auto_read = BotConfig.AUTO_READ_ENABLED()
+    auto_ticket = BotConfig.AUTO_TICKET_ENABLED()
     auto_install = not current
     order_confirm = BotConfig.ORDER_CONFIRM_RESPONSE_ENABLED()
     review_response = BotConfig.REVIEW_RESPONSE_ENABLED()
@@ -911,7 +1092,7 @@ async def callback_switch_auto_install(callback: CallbackQuery):
     
     await callback.message.edit_text(
         status_text,
-        reply_markup=get_global_switches_menu(auto_bump, auto_delivery, auto_restore, auto_install, order_confirm, review_response)
+        reply_markup=get_global_switches_menu(auto_bump, auto_delivery, auto_restore, auto_read, auto_ticket, auto_install, order_confirm, review_response)
     )
 
 
