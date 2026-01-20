@@ -308,7 +308,12 @@ class BotConfig:
     
     @staticmethod
     def NOTIFY_LOT_BUMP() -> bool:
-        return _config_manager.get('Notifications', 'lotBump', True)
+        return _config_manager.get('Notifications', 'lotBump', False)
+
+    @staticmethod
+    def NOTIFY_AUTO_TICKET() -> bool:
+        """Уведомлять об отправке авто-тикета"""
+        return _config_manager.get('Notifications', 'autoTicket', True)
     
     # === Авто-поднятие ===
     @staticmethod
@@ -328,6 +333,33 @@ class BotConfig:
     @staticmethod
     def AUTO_RESTORE_ENABLED() -> bool:
         return _config_manager.get('Starvell', 'autoRestore', False)
+    
+    # === Авто-прочтение ===
+    @staticmethod
+    def AUTO_READ_ENABLED() -> bool:
+        """Автоматически помечать чаты как прочитанные"""
+        return _config_manager.get('Starvell', 'autoRead', True)
+    
+    # === Авто-тикет ===
+    @staticmethod
+    def AUTO_TICKET_ENABLED() -> bool:
+        """Автоматически отправлять тикеты для неподтверждённых заказов"""
+        return _config_manager.get('Starvell', 'autoTicket', False)
+    
+    @staticmethod
+    def AUTO_TICKET_INTERVAL() -> int:
+        """Интервал проверки авто-тикета (секунды)"""
+        return _config_manager.get('Starvell', 'autoTicketInterval', 3600)
+
+    @staticmethod
+    def AUTO_TICKET_MAX_ORDERS() -> int:
+        """Максимум заказов в одном тикете"""
+        return _config_manager.get('Starvell', 'autoTicketMaxOrders', 5)
+
+    @staticmethod
+    def AUTO_TICKET_ORDER_AGE() -> int:
+        """Минимальный возраст заказа для авто-тикета (часы)"""
+        return _config_manager.get('Starvell', 'autoTicketOrderAge', 48)
     
     # === Автоответы ===
     @staticmethod
@@ -440,10 +472,23 @@ class BotConfig:
                     _config_manager.set('Starvell', 'autoDelivery', value)
                 elif section_key == 'auto_restore' and cfg_key == 'enabled':
                     _config_manager.set('Starvell', 'autoRestore', value)
+                elif section_key == 'auto_read' and cfg_key == 'enabled':
+                    _config_manager.set('Starvell', 'autoRead', value)
+                elif section_key == 'auto_ticket':
+                    if cfg_key == 'enabled':
+                        _config_manager.set('Starvell', 'autoTicket', value)
+                    elif cfg_key == 'interval':
+                        _config_manager.set('Starvell', 'autoTicketInterval', value)
+                    elif cfg_key == 'max_orders':
+                        _config_manager.set('Starvell', 'autoTicketMaxOrders', value)
+                    elif cfg_key == 'order_age':
+                        _config_manager.set('Starvell', 'autoTicketOrderAge', value)
                 elif section_key == 'notifications':
                     # Преобразуем snake_case в camelCase
                     if cfg_key == 'new_messages':
                         _config_manager.set('Notifications', 'newMessages', value)
+                    elif cfg_key == 'auto_ticket':
+                        _config_manager.set('Notifications', 'autoTicket', value)
                     elif cfg_key == 'new_orders':
                         _config_manager.set('Notifications', 'newOrders', value)
                     elif cfg_key == 'lot_restore':

@@ -11,6 +11,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from bot.core.config import BotConfig, get_config_manager
 from bot.core.services import StarvellService
 from bot.core.storage import Database
+from bot.features.autoticket import get_autoticket_service
 
 
 logger = logging.getLogger(__name__)
@@ -38,8 +39,8 @@ class BackgroundTasks:
         
     def start(self):
         """Запустить фоновые задачи"""
-        # Проверка новых сообщений 
-        chat_interval = 10 # TODO: Фиксануть этот костыль (ебучий starvell подняли ограничение на 6 запросов в минуту)
+        # Проверка новых сообщений
+        chat_interval = 5
         self.scheduler.add_job(
             self._check_new_messages_loop,
             'interval',
@@ -47,8 +48,8 @@ class BackgroundTasks:
             id='check_messages',
         )
         
-        # Проверка новых заказов 
-        orders_interval = get_config_manager().get('Monitor', 'ordersPollInterval', 10)
+        # Проверка новых заказов
+        orders_interval = get_config_manager().get('Monitor', 'ordersPollInterval', 5)
         self.scheduler.add_job(
             self._check_new_orders_loop,
             'interval',
@@ -58,6 +59,21 @@ class BackgroundTasks:
         
         # Авто-bump офферов
         if BotConfig.AUTO_BUMP_ENABLED():
+            self.scheduler.add_job(
+                self._auto_bump,
+                'interval',
+                seconds=BotConfig.AUTO_BUMP_INTERVAL(),
+                id='auto_bump',
+            )
+
+        # Авто-тикеты
+        if BotConfig.AUTO_TICKET_ENABLED():
+            self.scheduler.add_job(
+                self._check_auto_ticket_loop,
+                'interval',
+                seconds=BotConfig.AUTO_TICKET_INTERVAL(),
+                id='auto_ticket',
+            )
             self.scheduler.add_job(
                 self._auto_bump,
                 'interval',
@@ -157,27 +173,29 @@ class BackgroundTasks:
                     logger.debug(f"Сообщение от пользователя {author_id} игнорируется (в черном списке)")
                     continue
                 
-                # Получаем nickname из данных чата
-                # Структура может быть: chat.companion.nickname или chat.members[].nickname
-                author_nickname = None
-                if chat:
-                    # Пробуем получить companion (для личных чатов)
-                    companion = chat.get("companion", {})
-                    if companion and str(companion.get("id")) == str(author_id):
-                        author_nickname = companion.get("nickname") or companion.get("name")
-                    
-                    # Пробуем найти в members (для групповых чатов)
-                    if not author_nickname:
-                        members = chat.get("members", [])
-                        for member in members:
-                            if str(member.get("id")) == str(author_id):
-                                author_nickname = member.get("nickname") or member.get("name")
-                                break
+                # Получаем username напрямую из данных сообщения
+                # API возвращает message.author.username
+                author_username = None
+                author_data = message.get("author", {})
+                if author_data:
+                    author_username = author_data.get("username") or author_data.get("name")
                 
-                # Пропускаем свои сообщения
+                # Если нет в сообщении, пробуем найти в participants чата
+                if not author_username and chat:
+                    participants = chat.get("participants", [])
+                    for participant in participants:
+                        if str(participant.get("id")) == str(author_id):
+                            author_username = participant.get("username") or participant.get("name")
+                            break
+                
+                # Пропускаем свои сообщения (проверяем по ID из кэша или из author)
                 try:
-                    user_info = await self.starvell.get_user_info()
-                    if str(author_id) == str(user_info.get("user", {}).get("id")):
+                    # Используем кэшированный user_id если он есть
+                    if not hasattr(self, '_my_user_id'):
+                        user_info = await self.starvell.get_user_info()
+                        self._my_user_id = str(user_info.get("user", {}).get("id", ""))
+                    
+                    if str(author_id) == self._my_user_id:
                         continue
                 except Exception:
                     pass
@@ -195,7 +213,7 @@ class BackgroundTasks:
                     author=str(author_id),
                     content=content,
                     message_id=str(message_id) if message_id else None,
-                    author_nickname=author_nickname
+                    author_nickname=author_username  
                 )
                 
                 # Запоминаем это сообщение
@@ -205,8 +223,7 @@ class BackgroundTasks:
                 # Проверяем кастомные команды
                 await self._check_custom_command(chat_id, content, author_id)
                     
-                # Логируем
-                display_name = author_nickname or author_id
+                display_name = author_username or author_id
                 logger.info(f"📩 Новое сообщение от {display_name}: {content[:50]}...")
                     
         except Exception as e:
@@ -435,3 +452,62 @@ class BackgroundTasks:
         elif not enabled and self.scheduler.get_job('auto_bump'):
             self.scheduler.remove_job('auto_bump')
             logger.info("Авто-bump выключен")
+
+    async def _check_auto_ticket_loop(self):
+        """Проверка авто-тикетов"""
+        if not BotConfig.AUTO_TICKET_ENABLED():
+            return
+
+        try:
+            autoticket = get_autoticket_service()
+            if not autoticket:
+                logger.warning("Сервис авто-тикетов не инициализирован")
+                return
+
+            # Получаем неподтвержденные заказы
+            hours = BotConfig.AUTO_TICKET_ORDER_AGE()
+            unconfirmed = await autoticket.get_unconfirmed_orders(self.starvell, hours=hours)
+            
+            if not unconfirmed:
+                return
+                
+            logger.info(f"Найдено {len(unconfirmed)} заказов для авто-тикета")
+            
+            # Разбиваем на пачки
+            max_orders = BotConfig.AUTO_TICKET_MAX_ORDERS()
+            order_ids = [str(o.get('id')) for o in unconfirmed]
+            
+            chunks = [order_ids[i:i + max_orders] for i in range(0, len(order_ids), max_orders)]
+            
+            for chunk in chunks:
+                success, msg = await autoticket.send_ticket(chunk)
+                
+                # Уведомляем админов
+                if BotConfig.NOTIFY_AUTO_TICKET():
+                    if success:
+                        text = (
+                            f"🎫 <b>Авто-тикет отправлен!</b>\n\n"
+                            f"Заказы: {', '.join(chunk)}\n"
+                            f"Результат: {msg}"
+                        )
+                        force_notif = False
+                    else:
+                        text = (
+                            f"❌ <b>Ошибка авто-тикета</b>\n\n"
+                            f"Заказы: {', '.join(chunk)}\n"
+                            f"Ошибка: {msg}"
+                        )
+                        force_notif = True
+                        
+                    await self.notifier.notify_all_admins(
+                        "auto_ticket",
+                        text,
+                        force=force_notif
+                    )
+                
+                # Пауза между отправками тикетов чтобы не спамить
+                if len(chunks) > 1:
+                    await asyncio.sleep(60) 
+            
+        except Exception as e:
+            logger.error(f"Ошибка в цикле авто-тикетов: {e}", exc_info=True)

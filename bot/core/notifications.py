@@ -223,13 +223,8 @@ class NotificationManager:
         from bot.keyboards.keyboards import get_select_template_menu
         from bot.core.templates import get_template_manager
         
-        # Todo: найти время и фиксануть 
-        # Используем nickname если есть, иначе пытаемся получить через API
-        display_name = author_nickname
-        if not display_name:
-            # Пытаемся получить nickname по author (ID)
-            fetched_nickname = await self._get_nickname_by_id(author)
-            display_name = fetched_nickname if fetched_nickname else author
+        # Используем nickname если есть, иначе ID
+        display_name = author_nickname if author_nickname else author
         
         # Форматируем сообщение: смайлик + nickname/ID: message
         message = f"💬 <b>{display_name}:</b> {content}"
@@ -259,12 +254,17 @@ class NotificationManager:
         # Кнопка "Быстрые ответы" — показываем всегда, если есть chat_id
         if chat_id:
             tpl_text = f"📝 Быстрые ответы ({templates_count})" if templates_count > 0 else "📝 Быстрые ответы"
-            row1.append(
-                InlineKeyboardButton(
-                    text=tpl_text,
-                    callback_data=f"show_templates:{chat_id}"
+            tpl_callback = f"show_templates:{chat_id}"
+            # Проверяем длину callback_data (лимит Telegram - 64 байта)
+            if len(tpl_callback.encode('utf-8')) <= 64:
+                row1.append(
+                    InlineKeyboardButton(
+                        text=tpl_text,
+                        callback_data=tpl_callback
+                    )
                 )
-            )
+            else:
+                logger.warning(f"Callback data для быстрых ответов слишком длинный: {len(tpl_callback.encode('utf-8'))} байт (chat_id: {chat_id[:20]}...)")
 
         if row1:
             buttons.append(row1)
@@ -344,12 +344,17 @@ class NotificationManager:
 
             # Кнопка Быстрые ответы (показываем всегда, даже если их 0)
             tpl_text = f"📝 Быстрые ответы ({templates_count})" if templates_count > 0 else "📝 Быстрые ответы"
-            row1.append(
-                InlineKeyboardButton(
-                    text=tpl_text,
-                    callback_data=f"show_templates:{chat_id}"
+            tpl_callback = f"show_templates:{chat_id}"
+            # Проверяем длину callback_data (лимит Telegram - 64 байта)
+            if len(tpl_callback.encode('utf-8')) <= 64:
+                row1.append(
+                    InlineKeyboardButton(
+                        text=tpl_text,
+                        callback_data=tpl_callback
+                    )
                 )
-            )
+            else:
+                logger.warning(f"Callback data для быстрых ответов слишком длинный: {len(tpl_callback.encode('utf-8'))} байт (chat_id: {chat_id[:20]}...)")
 
         if row1:
             buttons.append(row1)

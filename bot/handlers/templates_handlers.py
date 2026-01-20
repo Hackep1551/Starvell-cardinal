@@ -34,7 +34,8 @@ async def callback_show_templates_for_reply(callback: CallbackQuery):
     """Показать быстрые ответы для выбора и отправки"""
     await callback.answer()
 
-    chat_id = callback.data.split(":")[1]
+    # Извлекаем chat_id (может содержать двоеточия, берём всё после первого ":")
+    chat_id = callback.data.split(":", 1)[1]
 
     template_manager = get_template_manager()
     templates = template_manager.get_all()
@@ -215,11 +216,21 @@ async def callback_select_template(callback: CallbackQuery, starvell=None, **kwa
     """Выбрать и отправить быстрый ответ пользователю"""
     await callback.answer()
     
-    # Формат: SELECT_TEMPLATE:template_id:chat_id
-    parts = callback.data.split(":")
+    # Формат: SELECT_TEMPLATE:template_id:chat_id или SELECT_TEMPLATE:template_id
+    parts = callback.data.split(":", 2)  # Разбиваем максимум на 3 части
     template_id = parts[1]
-    # chat_id can be a Starvell UUID string or a numeric ID; preserve as string
+    # chat_id может быть в callback_data или нужно извлечь из текста сообщения
     chat_id = parts[2] if len(parts) > 2 else None
+    
+    # Если chat_id нет в callback_data, пытаемся извлечь из текста сообщения
+    if not chat_id and callback.message and callback.message.text:
+        # Ищем в тексте сообщения упоминание chat_id (например, в ссылке)
+        import re
+        text = callback.message.text
+        # Попытка найти UUID в тексте
+        uuid_match = re.search(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', text, re.IGNORECASE)
+        if uuid_match:
+            chat_id = uuid_match.group(0)
     
     if not chat_id:
         await callback.answer("❌ Не указан чат", show_alert=True)
