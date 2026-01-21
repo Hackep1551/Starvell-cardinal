@@ -153,6 +153,14 @@ async def main():
             logger.error("Проверьте session_cookie в configs/_main.cfg")
             
         user = user_info.get("user", {})
+        
+        # Обновляем имя бота
+        nickname = user.get("nickname") or user.get("username") or "Trader"
+        try:
+            await bot.set_my_name(f"{nickname} | Starvell Cardinal")
+        except Exception as e:
+            logger.warning(f"Не удалось изменить имя бота: {e}")
+            
         logger.info(f"Авторизован как: {user.get('username')} (ID: {user.get('id')})")
         
     except Exception as e:
@@ -206,12 +214,6 @@ async def main():
                 f"<b>ID:</b> <code>{user.get('id', 'N/A')}</code>\n\n"
                 f"<b>Версия бота:</b> <code>{VERSION}</code>\n"
                 f"<b>Время запуска:</b> <code>{current_time}</code>\n\n"
-                f"<b>Статус сервисов:</b>\n"
-                f"├ 🔄 Автоподнятие: {'✅' if BotConfig.AUTO_BUMP_ENABLED() else '❌'}\n"
-                f"├ 🌐 Keep Alive: {'✅' if BotConfig.KEEP_ALIVE_ENABLED() else '❌'}\n"
-                f"├ 📦 Авто-выдача: {'✅' if BotConfig.AUTO_DELIVERY_ENABLED() else '❌'}\n"
-                f"├ ♻️ Авто-восстановление: {'✅' if BotConfig.AUTO_RESTORE_ENABLED() else '❌'}\n"
-                f"└ 🤖 Авто-ответы: {'✅' if BotConfig.ORDER_CONFIRM_RESPONSE_ENABLED() or BotConfig.REVIEW_RESPONSE_ENABLED() else '❌'}\n"
             )
             
             await notifications.notify_all_admins(

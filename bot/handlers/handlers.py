@@ -942,9 +942,9 @@ async def callback_auto_ticket_settings(callback: CallbackQuery):
         reply_markup=get_auto_ticket_settings_menu(enabled, interval, max_orders, notify)
     )
 
-@router.callback_query(F.data == CBT.SWITCH_AUTO_TICKET)
-async def callback_switch_auto_ticket(callback: CallbackQuery):
-    """Переключить авто-тикет"""
+@router.callback_query(F.data == CBT.SWITCH_AUTO_TICKET_INTERNAL)
+async def callback_switch_auto_ticket_internal(callback: CallbackQuery):
+    """Переключить авто-тикет (внутри настроек)"""
     # Переключаем
     current = BotConfig.AUTO_TICKET_ENABLED()
     BotConfig.update(**{"auto_ticket.enabled": not current})
@@ -969,6 +969,35 @@ async def callback_switch_auto_ticket(callback: CallbackQuery):
     await callback.message.edit_text(
         text,
         reply_markup=get_auto_ticket_settings_menu(enabled, interval, max_orders, notify)
+    )
+
+
+@router.callback_query(F.data == CBT.SWITCH_AUTO_TICKET)
+async def callback_switch_auto_ticket(callback: CallbackQuery):
+    """Переключить авто-тикет (глобальное меню)"""
+    # Переключаем
+    current = BotConfig.AUTO_TICKET_ENABLED()
+    BotConfig.update(**{"auto_ticket.enabled": not current})
+    
+    # Уведомление об изменении
+    status = "включен" if not current else "выключен"
+    await callback.answer(f"Авто-тикет {status}", show_alert=False)
+    
+    # Обновляем глобальное меню
+    auto_bump = BotConfig.AUTO_BUMP_ENABLED()
+    auto_delivery = BotConfig.AUTO_DELIVERY_ENABLED()
+    auto_restore = BotConfig.AUTO_RESTORE_ENABLED()
+    auto_read = BotConfig.AUTO_READ_ENABLED()
+    auto_ticket = not current
+    auto_install = BotConfig.AUTO_UPDATE_INSTALL()
+    order_confirm = BotConfig.ORDER_CONFIRM_RESPONSE_ENABLED()
+    review_response = BotConfig.REVIEW_RESPONSE_ENABLED()
+    
+    status_text = "⚙️ <b>Глобальные переключатели</b>\n\nЗдесь вы можете включать и отключать основные функции бота.\n\n"
+    
+    await callback.message.edit_text(
+        status_text,
+        reply_markup=get_global_switches_menu(auto_bump, auto_delivery, auto_restore, auto_read, auto_ticket, auto_install, order_confirm, review_response)
     )
 
 
