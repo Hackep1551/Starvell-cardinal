@@ -59,7 +59,11 @@ class CBT:
     AUTO_TICKET_SETTINGS = "autoticket_settings"
     AUTO_TICKET_SET_INTERVAL = "autoticket_set_interval"
     AUTO_TICKET_SET_MAX = "autoticket_set_max"
+    AUTO_TICKET_SETTINGS = "autoticket_settings"
+    AUTO_TICKET_SET_INTERVAL = "autoticket_set_interval"
+    AUTO_TICKET_SET_MAX = "autoticket_set_max"
     SWITCH_AUTO_TICKET_NOTIFY = "switch:autoticket_notify"
+    SWITCH_AUTO_TICKET_INTERNAL = "switch:auto_ticket_internal"
     
     # Уведомления
     NOTIF_MESSAGES = "notif:messages"
@@ -202,6 +206,12 @@ def get_main_menu_page_2(update_available: bool = False) -> InlineKeyboardMarkup
         ],
         [
             InlineKeyboardButton(
+                text="⚙️ Авто-тикеты (Бета)",
+                callback_data=CBT.AUTO_TICKET_SETTINGS
+            ),
+        ],
+        [
+            InlineKeyboardButton(
                 text="📁 Конфиги",
                 callback_data=CBT.CONFIGS_MENU
             ),
@@ -283,8 +293,8 @@ def get_global_switches_menu(
         ],
         [
             InlineKeyboardButton(
-                text=switch_text("Авто-тикет (бета-тест)", auto_ticket),
-                callback_data=CBT.AUTO_TICKET_SETTINGS
+                text=switch_text("Авто-тикет", auto_ticket),
+                callback_data=CBT.SWITCH_AUTO_TICKET
             ),
         ],
         [
@@ -975,7 +985,7 @@ def get_auto_ticket_settings_menu(
         [
             InlineKeyboardButton(
                 text=f"{'✅' if enabled else '❌'} Статус: {'Включено' if enabled else 'Выключено'}",
-                callback_data=CBT.SWITCH_AUTO_TICKET
+                callback_data=CBT.SWITCH_AUTO_TICKET_INTERNAL
             )
         ],
         [

@@ -74,12 +74,6 @@ class BackgroundTasks:
                 seconds=BotConfig.AUTO_TICKET_INTERVAL(),
                 id='auto_ticket',
             )
-            self.scheduler.add_job(
-                self._auto_bump,
-                'interval',
-                seconds=BotConfig.AUTO_BUMP_INTERVAL(),
-                id='auto_bump',
-            )
         
         # Проверка автоответов (каждые 30 секунд)
         if self.auto_response:
