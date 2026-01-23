@@ -16,6 +16,7 @@ from bot.keyboards import (
     get_global_switches_menu,
     get_notifications_menu,
     get_auto_delivery_lots_menu,
+    get_auto_ticket_settings_menu,
     get_blacklist_menu,
     get_plugins_menu,
     get_select_template_menu,
@@ -32,6 +33,23 @@ router.include_router(plugins_handlers.router)
 router.include_router(templates_handlers.router)
 router.include_router(extra_handlers.router)
 router.include_router(custom_commands_handlers.router)
+
+
+# Утилита: безопасное приведение к float (чтобы избежать ошибок форматирования, если приходит dict)
+def _safe_float(val, default=0.0):
+    """Преобразовать в float безопасно; в случае ошибки вернуть default"""
+    try:
+        if isinstance(val, dict):
+            for k in ("amount", "price", "totalPrice", "basePrice", "value"):
+                if k in val:
+                    try:
+                        return float(val[k])
+                    except Exception:
+                        continue
+            return default
+        return float(val)
+    except Exception:
+        return default
 
 
 # === Состояния ===
@@ -349,12 +367,12 @@ async def cmd_profile(message: Message, starvell, **kwargs):
         text += f"<b>ID:</b> <code>{user_id}</code>\n"
         text += f"<b>Статус:</b> {verified}\n"
         text += f"<b>Регистрация:</b> {created_at}\n\n"
-        text += f"💰 <b>Баланс:</b>\n"
-        text += f"├ Доступно: <code>{balance:.2f}</code> ₽\n"
-        text += f"├ Заморожено: <code>{hold_balance:.2f}</code> ₽\n"
-        text += f"└ Всего: <code>{total_balance:.2f}</code> ₽\n\n"
-        text += f"⭐ <b>Рейтинг:</b> {rating:.1f} ({reviews_count} отзывов)"
-        
+        text = f"💰 <b>Баланс:</b>\n"
+        text += f"├ Доступно: <code>{_safe_float(balance):.2f}</code> ₽\n"
+        text += f"├ Заморожено: <code>{_safe_float(hold_balance):.2f}</code> ₽\n"
+        text += f"└ Всего: <code>{_safe_float(total_balance):.2f}</code> ₽\n\n"
+        text += f"⭐ <b>Рейтинг:</b> {_safe_float(rating):.1f} ({reviews_count} отзывов)"
+
         # Кнопка для статистики
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(
@@ -366,7 +384,9 @@ async def cmd_profile(message: Message, starvell, **kwargs):
                 callback_data="profile_refresh"
             )]
         ])
-        
+
+    # Балансы уже форматированы безопасно выше, замены не требуются
+
         await message.answer(text, reply_markup=keyboard)
         
     except Exception as e:
@@ -424,9 +444,9 @@ async def callback_profile_refresh(callback: CallbackQuery, starvell, **kwargs):
         text += f"<b>Статус:</b> {verified}\n"
         text += f"<b>Регистрация:</b> {created_at}\n\n"
         text += f"💰 <b>Баланс:</b>\n"
-        text += f"├ Доступно: <code>{balance:.2f}</code> ₽\n"
-        text += f"├ Заморожено: <code>{hold_balance:.2f}</code> ₽\n"
-        text += f"└ Всего: <code>{total_balance:.2f}</code> ₽\n\n"
+        text += f"├ Доступно: <code>{_safe_float(balance):.2f}</code> ₽\n"
+        text += f"├ Заморожено: <code>{_safe_float(hold_balance):.2f}</code> ₽\n"
+        text += f"└ Всего: <code>{_safe_float(total_balance):.2f}</code> ₽\n\n"
         text += f"⭐ <b>Рейтинг:</b> {rating:.1f} ({reviews_count} отзывов)"
         
         # Кнопка для статистики
@@ -456,18 +476,18 @@ async def callback_profile_stats(callback: CallbackQuery, starvell, **kwargs):
         # Получаем заказы
         orders = await starvell.get_orders()
         
-        # Анализируем статистику
+        # Анализируем статистику (проверка регистра статуса)
         total_orders = len(orders)
-        completed_orders = sum(1 for order in orders if order.get("status") == "completed")
-        cancelled_orders = sum(1 for order in orders if order.get("status") == "cancelled")
-        active_orders = sum(1 for order in orders if order.get("status") not in ["completed", "cancelled"])
+        completed_orders = sum(1 for order in orders if str(order.get("status")).upper() == "COMPLETED")
+        cancelled_orders = sum(1 for order in orders if str(order.get("status")).upper() == "CANCELLED")
+        active_orders = total_orders - completed_orders - cancelled_orders
         
-        # Считаем доход
-        total_income = sum(order.get("price", 0) for order in orders if order.get("status") == "completed")
+        # Считаем доход (ключ basePrice)
+        total_income = sum(order.get("basePrice", 0) for order in orders if str(order.get("status")).upper() == "COMPLETED")
         
         # Считаем среднюю оценку
         reviews = [order.get("review", {}) for order in orders if order.get("review")]
-        avg_rating = sum(r.get("rating", 0) for r in reviews) / len(reviews) if reviews else 0
+        avg_rating = sum(r.get("rating", 0) for r in reviews) / len(reviews) if reviews else starvell.last_user_info.get("user", {}).get("rating", 0)
         
         # Статистика по датам
         from datetime import datetime, timedelta
@@ -493,7 +513,7 @@ async def callback_profile_stats(callback: CallbackQuery, starvell, **kwargs):
                 
             try:
                 order_date = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
-                order_price = order.get("price", 0)
+                order_price = order.get("basePrice", 0)
                 
                 if order_date >= today_start:
                     orders_today += 1
@@ -517,18 +537,18 @@ async def callback_profile_stats(callback: CallbackQuery, starvell, **kwargs):
         text += f"└ Отменено: <code>{cancelled_orders}</code>\n\n"
         
         text += f"💰 <b>Доход (завершенные):</b>\n"
-        text += f"├ За сегодня: <code>{income_today:.2f}</code> ₽ ({orders_today} зак.)\n"
-        text += f"├ За неделю: <code>{income_week:.2f}</code> ₽ ({orders_week} зак.)\n"
-        text += f"├ За месяц: <code>{income_month:.2f}</code> ₽ ({orders_month} зак.)\n"
-        text += f"└ Всего: <code>{total_income:.2f}</code> ₽\n\n"
+        text += f"├ За сегодня: <code>{_safe_float(income_today):.2f}</code> ₽ ({orders_today} зак.)\n"
+        text += f"├ За неделю: <code>{_safe_float(income_week):.2f}</code> ₽ ({orders_week} зак.)\n"
+        text += f"├ За месяц: <code>{_safe_float(income_month):.2f}</code> ₽ ({orders_month} зак.)\n"
+        text += f"└ Всего: <code>{_safe_float(total_income):.2f}</code> ₽\n\n"
         
         text += f"⭐ <b>Отзывы:</b>\n"
-        text += f"├ Средняя оценка: <code>{avg_rating:.2f}</code>\n"
+        text += f"├ Средняя оценка: <code>{_safe_float(avg_rating):.2f}</code>\n"
         text += f"└ Всего отзывов: <code>{len(reviews)}</code>\n\n"
         
         if total_orders > 0:
-            avg_order_value = total_income / completed_orders if completed_orders else 0
-            text += f"📈 <b>Средний чек:</b> <code>{avg_order_value:.2f}</code> ₽"
+            avg_order_value = _safe_float(total_income) / completed_orders if completed_orders else 0
+            text += f"📈 <b>Средний чек:</b> <code>{_safe_float(avg_order_value):.2f}</code> ₽"
         
         # Кнопки управления
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -563,27 +583,48 @@ async def callback_profile_back(callback: CallbackQuery, starvell, **kwargs):
     user = user_info.get("user", {})
     username = user.get("username", "Неизвестно")
     user_id = user.get("id", "N/A")
-    balance = user.get("balance", 0)
-    frozen = user.get("frozen", 0)
-    avatar_url = user.get("avatarUrl")
+    # Получаем баланс корректно
+    balance_data = user.get("balance", {})
+    balance = balance_data.get("rubBalance", 0) if isinstance(balance_data, dict) else 0
+    hold_balance = user.get("holdedAmount", 0)
+    
+    # Статус верификации (KYC)
+    verified = "✅ Верифицирован" if user.get("kycStatus") == "VERIFIED" else "❌ Не верифицирован"
+    
+    # Регистрация
+    created_at = user.get("createdAt", "Неизвестно")
+    if created_at != "Неизвестно":
+        from datetime import datetime
+        try:
+            dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+            created_at = dt.strftime("%d.%m.%Y %H:%M")
+        except:
+            pass
     
     # Получаем статистику
     orders = await starvell.get_orders()
     total_orders = len(orders)
-    active_orders = sum(1 for o in orders if o.get("status") not in ["COMPLETED", "CANCELLED"])
+    active_orders = sum(1 for o in orders if str(o.get("status")).upper() not in ["COMPLETED", "CANCELLED"])
     
     # Статистика по отзывам
     reviews = [o.get("review") for o in orders if o.get("review")]
-    avg_rating = sum(r.get("rating", 0) for r in reviews) / len(reviews) if reviews else 0
+    # Если нет отзывов по заказам, берем общий рейтинг из профиля
+    if reviews:
+        avg_rating = sum(r.get("rating", 0) for r in reviews) / len(reviews)
+    else:
+        avg_rating = user.get("rating", 0)
     
     text = f"👤 <b>Профиль</b>\n\n"
     text += f"<b>Имя:</b> {username}\n"
-    text += f"<b>ID:</b> <code>{user_id}</code>\n\n"
-    text += f"💰 <b>Баланс:</b> <code>{balance:.2f}</code> ₽\n"
-    text += f"🧊 <b>Замороженные:</b> <code>{frozen:.2f}</code> ₽\n\n"
+    text += f"<b>ID:</b> <code>{user_id}</code>\n"
+    text += f"<b>Статус:</b> {verified}\n"
+    text += f"<b>Регистрация:</b> {created_at}\n\n"
+    text += f"💰 <b>Баланс:</b>\n"
+    text += f"├ Доступно: <code>{_safe_float(balance):.2f}</code> ₽\n"
+    text += f"├ Заморожено: <code>{_safe_float(hold_balance):.2f}</code> ₽\n"
+    text += f"└ Всего: <code>{_safe_float(balance + hold_balance):.2f}</code> ₽\n\n"
     text += f"📦 <b>Заказы:</b>\n"
     text += f"├ Всего: <code>{total_orders}</code>\n"
-    text += f"└ Активных: <code>{active_orders}</code>\n\n"
     text += f"⭐ <b>Средняя оценка:</b> <code>{avg_rating:.2f}</code>"
     
     # Кнопки
@@ -649,12 +690,11 @@ async def cmd_logs(message: Message, **kwargs):
         else:
             error_msg = "✅ Ошибок не обнаружено"
         
-        # Отправляем сообщение
+        # Отправляем сообщение с краткой информацией об ошибке
         await message.answer(error_msg)
-        
-        # Отправляем файл логов
+        # Отправим полный лог-файл как документ
         await message.answer_document(
-            FSInputFile(log_file),
+            FSInputFile(str(log_file)),
             caption="📄 Полный лог-файл бота"
         )
         
@@ -719,8 +759,6 @@ async def callback_update_now(callback: CallbackQuery, auto_update, **kwargs):
     await callback.answer()
     
     # Редактируем сообщение, показываем процесс
-    await callback.message.edit_text("🔄 Выполняется обновление...")
-    
     try:
         # Выполняем обновление
         result = await auto_update.perform_update()

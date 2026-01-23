@@ -130,22 +130,9 @@ class BackgroundTasks:
                 logger.warning("Менеджер уведомлений не инициализирован")
                 return
             
-            # Если это первая проверка после запуска - пропускаем уведомления,
-            # но сохраняем сообщения как "увиденные"
-            if self._first_check_messages:
-                self._first_check_messages = False
-                for msg_data in new_messages:
-                    chat_id = str(msg_data.get("chat_id", ""))
-                    message = msg_data.get("message", {})
-                    message_id = message.get("id")
-                    
-                    if chat_id not in self._seen_messages:
-                        self._seen_messages[chat_id] = set()
-                    if message_id:
-                        self._seen_messages[chat_id].add(message_id)
-                
-                logger.info(f"Первая проверка после запуска: пропущено {len(new_messages)} старых сообщений")
-                return
+            # Логируем количество найденных новых сообщений
+            if new_messages:
+                logger.debug(f"📬 Получено {len(new_messages)} новых сообщений от API")
             
             for msg_data in new_messages:
                 chat_id = str(msg_data.get("chat_id", ""))
@@ -232,11 +219,9 @@ class BackgroundTasks:
                 logger.warning("Менеджер уведомлений не инициализирован")
                 return
             
-            # Если это первая проверка после запуска - пропускаем уведомления
-            if self._first_check_orders:
-                self._first_check_orders = False
-                logger.info(f"Первая проверка после запуска: пропущено {len(new_orders)} старых заказов")
-                return
+            # Логируем количество найденных новых заказов
+            if new_orders:
+                logger.debug(f"📦 Получено {len(new_orders)} новых заказов от API")
             
             for order in new_orders:
                 order_id = str(order.get("id", ""))
@@ -363,15 +348,35 @@ class BackgroundTasks:
             
         except Exception as e:
             logger.error(f"Ошибка при выполнении авто-bump: {e}", exc_info=True)
-            
+
             from bot.core import get_notification_manager
             notif_manager = get_notification_manager()
-            
+
+            # Собираем подробные детали для уведомления (включая конфиг авто-bump)
+            details = {
+                "Время": datetime.now().strftime('%H:%M:%S'),
+                "game_id": BotConfig.AUTO_BUMP_GAME_ID(),
+                "categories": BotConfig.AUTO_BUMP_CATEGORIES(),
+                "error_type": type(e).__name__,
+            }
+
+            # Попытка получить дополнительные аргументы/тело ответа из исключения
+            try:
+                if hasattr(e, 'args') and e.args:
+                    details['args'] = e.args
+                # Если исключение содержит вложенные детали (например, словарь), попытаться их добавить
+                if hasattr(e, '__dict__'):
+                    for k, v in e.__dict__.items():
+                        if k not in details:
+                            details[k] = str(v)
+            except Exception:
+                pass
+
             if notif_manager:
                 await notif_manager.notify_error(
                     str(e),
                     context="Авто-bump",
-                    details={"Время": datetime.now().strftime('%H:%M:%S')}
+                    details=details
                 )
                     
     async def _cleanup_old_data(self):
