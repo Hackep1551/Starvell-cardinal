@@ -320,6 +320,79 @@ class AutoUpdateService:
                 else:
                     logger.warning(f"⚠️ Не удалось создать stash: {stash_result.stderr}")
             
+            # Перед получением обновлений создаём zip-бэкап репозитория и отправляем админам
+            try:
+                import os
+                import zipfile
+                from datetime import datetime
+
+                timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
+                backup_name = f"backup-{branch}-{timestamp}.zip"
+                backup_path = Path(backup_name)
+
+                def _should_exclude(p: Path) -> bool:
+                    # Исключаем .git и сам архив
+                    if '.git' in p.parts:
+                        return True
+                    if p == backup_path:
+                        return True
+                    return False
+
+                logger.info(f"📦 Создаю бэкап репозитория: {backup_name}")
+                with zipfile.ZipFile(str(backup_path), 'w', zipfile.ZIP_DEFLATED) as zf:
+                    for root, dirs, files in os.walk('.'):
+                        # Пропускаем .git папку
+                        parts = Path(root).parts
+                        if '.git' in parts:
+                            continue
+                        for file in files:
+                            file_path = Path(root) / file
+                            if _should_exclude(file_path):
+                                continue
+                            try:
+                                zf.write(str(file_path), arcname=str(file_path))
+                            except Exception:
+                                # Игнорируем файлы, которые не удалось заархивировать
+                                logger.debug(f"Не удалось добавить в бэкап: {file_path}")
+
+                # Пытаемся отправить бэкап через notifier (если он есть)
+                backup_send_failed = False
+                strict = os.environ.get('TELEGRAM_STRICT_BACKUP', '') == '1'
+                if self.notifier and Path(backup_path).exists():
+                    for admin_id in BotConfig.ADMIN_IDS():
+                        try:
+                            with open(backup_path, 'rb') as fh:
+                                await self.notifier.bot.send_document(
+                                    admin_id,
+                                    fh,
+                                    caption=f"Бэкап перед обновлением ({branch}) — {timestamp}"
+                                )
+                        except Exception as e:
+                            backup_send_failed = True
+                            logger.warning(f"Не удалось отправить бэкап администратору {admin_id}: {e}")
+
+                if backup_send_failed and strict:
+                    # Удаляем архив и прерываем обновление
+                    try:
+                        backup_path.unlink()
+                    except Exception:
+                        pass
+                    return {
+                        "success": False,
+                        "message": "❌ Не удалось отправить бэкап админам, обновление прервано (strict mode)",
+                        "output": "backup_send_failed"
+                    }
+
+                # Удаляем локальный файл-архив после отправки (если он существует)
+                try:
+                    if backup_path.exists():
+                        backup_path.unlink()
+                except Exception:
+                    logger.debug("Не удалось удалить временный бэкап-файл")
+
+            except Exception as e:
+                logger.warning(f"Не удалось создать/отправить бэкап: {e}")
+
             # Получаем список файлов которые будут удалены
             result = subprocess.run(
                 ["git", "fetch", "origin", branch],

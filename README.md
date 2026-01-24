@@ -285,7 +285,6 @@ python main.py
 ### Для пользователей
 
 - [Конфигурация бота](bot/core/config.py) — настройка параметров
-- [CHANGELOG](CHANGELOG.md) — история изменений
 
 ---
 
