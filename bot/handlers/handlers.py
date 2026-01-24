@@ -1321,7 +1321,7 @@ async def callback_notifications(callback: CallbackQuery):
     
     await callback.message.edit_text(
         status_text,
-        reply_markup=get_notifications_menu(messages, orders, restore, start, deactivate, bump)
+        reply_markup=get_notifications_menu(messages, orders, restore, start)
     )
 
 
@@ -1347,7 +1347,7 @@ async def callback_notif_messages(callback: CallbackQuery):
     
     await callback.message.edit_text(
         status_text,
-        reply_markup=get_notifications_menu(messages, orders, restore, start, deactivate, bump)
+        reply_markup=get_notifications_menu(messages, orders, restore, start)
     )
 
 
@@ -1373,7 +1373,7 @@ async def callback_notif_orders(callback: CallbackQuery):
     
     await callback.message.edit_text(
         status_text,
-        reply_markup=get_notifications_menu(messages, orders, restore, start, deactivate, bump)
+        reply_markup=get_notifications_menu(messages, orders, restore, start)
     )
 
 
@@ -1399,7 +1399,7 @@ async def callback_notif_restore(callback: CallbackQuery):
     
     await callback.message.edit_text(
         status_text,
-        reply_markup=get_notifications_menu(messages, orders, restore, start, deactivate, bump)
+        reply_markup=get_notifications_menu(messages, orders, restore, start)
     )
 
 
@@ -1425,60 +1425,11 @@ async def callback_notif_start(callback: CallbackQuery):
     
     await callback.message.edit_text(
         status_text,
-        reply_markup=get_notifications_menu(messages, orders, restore, start, deactivate, bump)
+        reply_markup=get_notifications_menu(messages, orders, restore, start)
     )
 
 
-@router.callback_query(F.data == CBT.NOTIF_DEACTIVATE)
-async def callback_notif_deactivate(callback: CallbackQuery):
-    """Переключить уведомления о деактивации лота"""
-    current = BotConfig.NOTIFY_LOT_DEACTIVATE()
-    BotConfig.update(**{"notifications.lot_deactivate": not current})
-    
-    
-    status = "включены" if not current else "выключены"
-    await callback.answer(f"Уведомления о деактивации {status}", show_alert=False)
-    
-    # Обновляем меню
-    messages = BotConfig.NOTIFY_NEW_MESSAGES()
-    orders = BotConfig.NOTIFY_NEW_ORDERS()
-    restore = BotConfig.NOTIFY_LOT_RESTORE()
-    start = BotConfig.NOTIFY_BOT_START()
-    deactivate = not current
-    bump = BotConfig.NOTIFY_LOT_BUMP()
-    
-    status_text = "🔔 <b>Настройки уведомлений</b>\n\nНастройте какие уведомления, которые вам нужны получать."
-    
-    await callback.message.edit_text(
-        status_text,
-        reply_markup=get_notifications_menu(messages, orders, restore, start, deactivate, bump)
-    )
 
-
-@router.callback_query(F.data == CBT.NOTIF_BUMP)
-async def callback_notif_bump(callback: CallbackQuery):
-    """Переключить уведомления о поднятии лота"""
-    current = BotConfig.NOTIFY_LOT_BUMP()
-    BotConfig.update(**{"notifications.lot_bump": not current})
-    
-    
-    status = "включены" if not current else "выключены"
-    await callback.answer(f"Уведомления о поднятии {status}", show_alert=False)
-    
-    # Обновляем меню
-    messages = BotConfig.NOTIFY_NEW_MESSAGES()
-    orders = BotConfig.NOTIFY_NEW_ORDERS()
-    restore = BotConfig.NOTIFY_LOT_RESTORE()
-    start = BotConfig.NOTIFY_BOT_START()
-    deactivate = BotConfig.NOTIFY_LOT_DEACTIVATE()
-    bump = not current
-    
-    status_text = "🔔 <b>Настройки уведомлений</b>\n\nНастройте какие уведомления, которые вам нужны получать."
-
-    await callback.message.edit_text(
-        status_text,
-        reply_markup=get_notifications_menu(messages, orders, restore, start, deactivate, bump)
-    )
 
 
 # === Обработчик кнопки "Ответить" из уведомлений ===
