@@ -3,6 +3,7 @@
 """
 
 import logging
+import os
 from aiogram.types import (
     InlineKeyboardMarkup,
     InlineKeyboardButton,
@@ -70,8 +71,6 @@ class CBT:
     NOTIF_ORDERS = "notif:orders"
     NOTIF_RESTORE = "notif:restore"
     NOTIF_START = "notif:start"
-    NOTIF_DEACTIVATE = "notif:deactivate"
-    NOTIF_BUMP = "notif:bump"
     
     # Автовыдача
     AD_LOTS_LIST = "ad_lots"
@@ -230,6 +229,12 @@ def get_main_menu_page_2(update_available: bool = False) -> InlineKeyboardMarkup
         ],
         [
             InlineKeyboardButton(
+                text="🔗 Сообщить об проблеме",
+                url=os.environ.get('TELEGRAM_SUPPORT_URL', 'https://t.me/Starvell_cardinal_support')
+            ),
+        ],
+        [
+            InlineKeyboardButton(
                 text="⬅️ Назад",
                 callback_data=CBT.MAIN
             ),
@@ -319,10 +324,8 @@ def get_notifications_menu(
     orders: bool,
     restore: bool,
     start: bool,
-    deactivate: bool,
-    bump: bool
 ) -> InlineKeyboardMarkup:
-    """Меню настроек уведомлений"""
+    """Меню настроек уведомлений (без уведомлений о деактивации/поднятии лота)"""
     
     def switch_text(name: str, enabled: bool) -> str:
         emoji = bool_to_emoji(enabled)
@@ -351,18 +354,6 @@ def get_notifications_menu(
             InlineKeyboardButton(
                 text=switch_text("Запуск бота", start),
                 callback_data=CBT.NOTIF_START
-            ),
-        ],
-        [
-            InlineKeyboardButton(
-                text=switch_text("Деактивация лота", deactivate),
-                callback_data=CBT.NOTIF_DEACTIVATE
-            ),
-        ],
-        [
-            InlineKeyboardButton(
-                text=switch_text("Поднятие лота", bump),
-                callback_data=CBT.NOTIF_BUMP
             ),
         ],
         [

@@ -391,8 +391,6 @@ class AutoRaiseService:
                 
             else:
                 # Другая ошибка
-                logger.error(f"❌ Ошибка при поднятии лотов игры ID={game_id}: {e}")
-                logger.debug("TRACEBACK", exc_info=True)
                 await asyncio.sleep(10)
                 return current_time + 60
     
