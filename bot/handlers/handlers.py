@@ -177,40 +177,6 @@ async def cmd_update(message: Message, auto_update, **kwargs):
         )
 
 
-@router.message(Command("changelog"))
-async def cmd_changelog(message: Message, **kwargs):
-    """Команда /changelog - показать список изменений"""
-    # Проверяем авторизацию
-    if not is_user_authorized(message.from_user.id):
-        return
-    
-    from pathlib import Path
-    from aiogram.types import FSInputFile
-    
-    changelog_file = Path("CHANGELOG.md")
-    
-    # Проверяем существование файла
-    if not changelog_file.exists():
-        await message.answer("❌ Файл CHANGELOG.md не найден")
-        return
-    
-    try:
-        # Просто отправляем краткое сообщение и файл
-        # Без попыток парсить HTML - слишком много проблем с разметкой
-        await message.answer(
-            "📝 <b>История изменений</b>\n\n"
-            "Скачайте файл ниже для просмотра всех изменений проекта.",
-        )
-        
-        # Отправляем полный файл
-        await message.answer_document(
-            FSInputFile(changelog_file),
-            caption="📄 CHANGELOG.md - Полная история изменений"
-        )
-        
-    except Exception as e:
-        await message.answer(f"❌ Ошибка при чтении CHANGELOG: {e}")
-
 
 
 @router.message(Command("session_cookie"))
