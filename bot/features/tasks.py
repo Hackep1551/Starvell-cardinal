@@ -16,11 +16,7 @@ from bot.features.autoticket import get_autoticket_service
 
 logger = logging.getLogger(__name__)
 
-# Настраиваем уровень логирования планировщика в зависимости от режима DEBUG
-if BotConfig.DEBUG():
-    logging.getLogger('apscheduler').setLevel(logging.WARNING)
-else:
-    logging.getLogger('apscheduler').setLevel(logging.ERROR)
+logging.getLogger('apscheduler').setLevel(logging.ERROR)
 
 
 class BackgroundTasks:
@@ -132,7 +128,8 @@ class BackgroundTasks:
             
             # Логируем количество найденных новых сообщений
             if new_messages:
-                logger.debug(f"📬 Получено {len(new_messages)} новых сообщений от API")
+                if BotConfig.DEBUG():
+                    logger.debug(f"📬 Получено {len(new_messages)} новых сообщений от API")
             
             for msg_data in new_messages:
                 chat_id = str(msg_data.get("chat_id", ""))
@@ -151,7 +148,9 @@ class BackgroundTasks:
                 config = get_config_manager()
                 blacklist_section = f"Blacklist.{author_id}"
                 if config._config.has_section(blacklist_section):
-                    logger.debug(f"Сообщение от пользователя {author_id} игнорируется (в черном списке)")
+                    if BotConfig.DEBUG():
+                        logger.debug(f"Сообщение от пользователя {author_id} игнорируется (в черном списке)")
+                    continue
                     continue
                 
                 # Получаем username напрямую из данных сообщения
