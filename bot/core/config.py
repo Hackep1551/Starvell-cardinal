@@ -26,6 +26,12 @@ class ConfigManager:
             try:
                 # Пробуем UTF-8
                 self._config.read(self.config_path, encoding='utf-8')
+                # После загрузки проверим целостность/схему конфигурации 
+                try:
+                    self._sanitize_config()
+                except Exception:
+                    # Не ломаем загрузку конфигурации при ошибках очистки
+                    pass
             except UnicodeDecodeError:
                 try:
                     # Если не получилось, пробуем Windows-1251
@@ -63,6 +69,7 @@ class ConfigManager:
             'newOrders': 'true',
             'lotRestore': 'false',
             'botStart': 'false',
+            'botStop': 'false',
             'lotDeactivate': 'false',
             'lotBump': 'false'
         }
@@ -89,14 +96,7 @@ class ConfigManager:
             'dir': 'storage'
         }
         
-        self._config['Proxy'] = {
-            'enabled': 'false',
-            'ip': '',
-            'port': '',
-            'login': '',
-            'password': '',
-            'check': 'false'
-        }
+        # Прокси больше не поддерживается — параметр удалён
         
         self._config['AutoUpdate'] = {
             'enabled': 'true'
@@ -108,9 +108,109 @@ class ConfigManager:
         
         self._config['Other'] = {
             'debug': 'false',
-            'watermark': '🤖'
+            'watermark': '🤖',
+            'useWatermark': 'true'
         }
         
+        self.save()
+
+    def _get_default_template(self) -> Dict[str, Dict[str, str]]:
+        """Вернуть шаблон секций и ключей по умолчанию (как словарь).
+
+        Используется для валидации/синхронизации существующего файла конфига.
+        """
+        return {
+            'Starvell': {
+                'session_cookie': '',
+                'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'autoRaise': 'false',
+                'autoDelivery': 'false',
+                'autoRestore': 'false',
+                'locale': 'ru'
+            },
+            'Telegram': {
+                'enabled': 'true',
+                'token': '',
+                'secretKeyHash': '',
+                'adminIds': '[]'
+            },
+            'Notifications': {
+                'checkInterval': '30',
+                'newMessages': 'true',
+                'newOrders': 'true',
+                'lotRestore': 'false',
+                'botStart': 'false',
+                'botStop': 'false',
+                'lotDeactivate': 'false',
+                'lotBump': 'false'
+            },
+            'AutoResponse': {
+                'orderConfirm': 'false',
+                'orderConfirmText': 'Спасибо за покупку! Если возникнут вопросы - обращайтесь.',
+                'reviewResponse': 'false',
+                'reviewResponseText': 'Благодарю за отзыв! Рад был помочь.'
+            },
+            'Monitor': {
+                'chatPollInterval': '5',
+                'ordersPollInterval': '10',
+                'remoteInfoInterval': '120'
+            },
+            'AutoRaise': {
+                'enabled': 'false',
+                'interval': '3600'
+            },
+            'Storage': {
+                'dir': 'storage'
+            },
+            # Proxy section removed
+            'AutoUpdate': {
+                'enabled': 'true'
+            },
+            'KeepAlive': {
+                'enabled': 'true'
+            },
+            'Other': {
+                'debug': 'false',
+                'watermark': '🤖',
+                'useWatermark': 'true'
+            }
+        }
+
+    def _sanitize_config(self):
+        """Синхронизировать текущий конфиг со схемой по умолчанию.
+
+        Удаляет лишние секции/ключи и добавляет отсутствующие ключи с
+        дефолтными значениями.
+        """
+        default = self._get_default_template()
+
+        # Удаляем лишние секции (те, которые не описаны в шаблоне)
+        for section in list(self._config.sections()):
+            if section not in default:
+                del self._config[section]
+
+        for section, keys in default.items():
+            if not self._config.has_section(section):
+                # Если секции нет - создаём и добавляем все ключи с дефолтами
+                self._config.add_section(section)
+                for key, val in keys.items():
+                    self._config.set(section, key, val)
+                continue
+
+            # Если секция есть - удаляем ключи, не описанные в шаблоне
+            # Сравниваем имена ключей в нижнем регистре, чтобы быть
+            # нечувствительными к изменению регистра optionxform
+            allowed = set(k.lower() for k in keys.keys())
+            for key in list(self._config[section].keys()):
+                if key.lower() not in allowed:
+                    self._config.remove_option(section, key)
+   
+            # Добавляем отсутствующие ключи (не перезаписываем существующие)
+            for key, val in keys.items():
+                if not self._config.has_option(section, key):
+                    self._config.set(section, key, val)
+
+        # Сохраняем изменения
         self.save()
         
     def save(self):
@@ -220,28 +320,29 @@ class BotConfig:
     # === Прокси ===
     @staticmethod
     def PROXY_ENABLED() -> bool:
-        return _config_manager.get('Proxy', 'enabled', False)
+        # Proxy support removed — всегда отключено
+        return False
     
     @staticmethod
     def PROXY_IP() -> str:
-        return _config_manager.get('Proxy', 'ip', '')
+        return ''
     
     @staticmethod
     def PROXY_PORT() -> str:
-        return _config_manager.get('Proxy', 'port', '')
+        return ''
     
     @staticmethod
     def PROXY_LOGIN() -> str:
-        return _config_manager.get('Proxy', 'login', '')
+        return ''
     
     @staticmethod
     def PROXY_PASSWORD() -> str:
-        return _config_manager.get('Proxy', 'password', '')
+        return ''
     
     @staticmethod
     def PROXY_CHECK() -> bool:
         """Проверять ли прокси перед использованием"""
-        return _config_manager.get('Proxy', 'check', False)
+        return False
     
     @staticmethod
     def PROXY() -> str:
@@ -249,32 +350,14 @@ class BotConfig:
         Получить прокси строку (если включен)
         Формат: [login:password@]ip:port
         """
-        if not BotConfig.PROXY_ENABLED():
-            return ''
-        
-        ip = BotConfig.PROXY_IP()
-        port = BotConfig.PROXY_PORT()
-        login = BotConfig.PROXY_LOGIN()
-        password = BotConfig.PROXY_PASSWORD()
-        
-        if not ip or not port:
-            return ''
-        
-        # Формируем строку прокси
-        if login and password:
-            return f"{login}:{password}@{ip}:{port}"
-        else:
-            return f"{ip}:{port}"
+        # Proxy support removed — возвращаем пустую строку
+        return ''
     
     @staticmethod
     def set_proxy(ip: str, port: str, login: str = '', password: str = '', enabled: bool = True, check: bool = False):
         """Установить прокси"""
-        _config_manager.set('Proxy', 'ip', ip)
-        _config_manager.set('Proxy', 'port', port)
-        _config_manager.set('Proxy', 'login', login)
-        _config_manager.set('Proxy', 'password', password)
-        _config_manager.set('Proxy', 'enabled', enabled)
-        _config_manager.set('Proxy', 'check', check)
+        # Proxy support was removed; this function is a no-op to preserve compatibility
+        return
     
     # === Хранилище ===
     @staticmethod
@@ -301,6 +384,10 @@ class BotConfig:
     @staticmethod
     def NOTIFY_BOT_START() -> bool:
         return _config_manager.get('Notifications', 'botStart', True)
+
+    @staticmethod
+    def NOTIFY_BOT_STOP() -> bool:
+        return _config_manager.get('Notifications', 'botStop', False)
     
     @staticmethod
     def NOTIFY_LOT_DEACTIVATE() -> bool:
@@ -314,6 +401,21 @@ class BotConfig:
     def NOTIFY_AUTO_TICKET() -> bool:
         """Уведомлять об отправке авто-тикета"""
         return _config_manager.get('Notifications', 'autoTicket', True)
+
+    @staticmethod
+    def NOTIFY_ORDER_CONFIRMED() -> bool:
+        """Уведомлять о подтверждении заказа"""
+        return _config_manager.get('Notifications', 'orderConfirmed', False)
+
+    @staticmethod
+    def NOTIFY_REVIEW() -> bool:
+        """Уведомлять о новых отзывах"""
+        return _config_manager.get('Notifications', 'review', False)
+
+    @staticmethod
+    def NOTIFY_AUTO_RESPONSES() -> bool:
+        """Уведомлять при выполнении автоответов/команд"""
+        return _config_manager.get('Notifications', 'autoResponses', False)
     
     # === Авто-поднятие ===
     @staticmethod
@@ -430,6 +532,14 @@ class BotConfig:
     @staticmethod
     def DEBUG() -> bool:
         return _config_manager.get('Other', 'debug', False)
+
+    @staticmethod
+    def WATERMARK() -> str:
+        return _config_manager.get('Other', 'watermark', '🤖')
+
+    @staticmethod
+    def USE_WATERMARK() -> bool:
+        return _config_manager.get('Other', 'useWatermark', True)
     
     @classmethod
     def validate(cls) -> bool:
@@ -484,7 +594,6 @@ class BotConfig:
                     elif cfg_key == 'order_age':
                         _config_manager.set('Starvell', 'autoTicketOrderAge', value)
                 elif section_key == 'notifications':
-                    # Преобразуем snake_case в camelCase
                     if cfg_key == 'new_messages':
                         _config_manager.set('Notifications', 'newMessages', value)
                     elif cfg_key == 'auto_ticket':
@@ -495,6 +604,14 @@ class BotConfig:
                         _config_manager.set('Notifications', 'lotRestore', value)
                     elif cfg_key == 'bot_start':
                         _config_manager.set('Notifications', 'botStart', value)
+                    elif cfg_key == 'bot_stop':
+                        _config_manager.set('Notifications', 'botStop', value)
+                    elif cfg_key == 'order_confirmed':
+                        _config_manager.set('Notifications', 'orderConfirmed', value)
+                    elif cfg_key == 'review':
+                        _config_manager.set('Notifications', 'review', value)
+                    elif cfg_key == 'auto_responses':
+                        _config_manager.set('Notifications', 'autoResponses', value)
                     elif cfg_key == 'lot_deactivate':
                         _config_manager.set('Notifications', 'lotDeactivate', value)
                     elif cfg_key == 'lot_bump':
@@ -502,6 +619,13 @@ class BotConfig:
                     else:
                         # Прямая установка для других ключей
                         _config_manager.set('Notifications', cfg_key, value)
+                elif section_key == 'other':
+                    if cfg_key == 'use_watermark':
+                        _config_manager.set('Other', 'useWatermark', value)
+                    elif cfg_key == 'watermark':
+                        _config_manager.set('Other', 'watermark', value)
+                    else:
+                        _config_manager.set('Other', cfg_key, value)
                 else:
                     # Прямая установка секция.ключ
                     _config_manager.set(section_key, cfg_key, value)

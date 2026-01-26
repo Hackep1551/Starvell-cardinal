@@ -13,6 +13,7 @@ from aiogram.types import BotCommand
 
 from bot.core.config import BotConfig, get_config_manager
 from bot.core import init_notifications, NotificationType
+from bot.core.usage_stats import log_event
 from bot.core.storage import Database
 from bot.core.services import StarvellService
 from bot.handlers import router
@@ -223,7 +224,13 @@ async def main():
         except Exception as e:
             logger.warning(f"Не удалось отправить уведомление о запуске: {e}")
             
-    logger.info("✅ Бот успешно запущен!")
+        logger.info("✅ Бот успешно запущен!")
+        # Записываем событие в usage_stats
+        try:
+            from version import VERSION
+            log_event("bot_started", f"version={VERSION} user={user.get('username')} id={user.get('id')} time={current_time}")
+        except Exception:
+            log_event("bot_started", f"user={user.get('username')} id={user.get('id')} time={current_time}")
     
     # Запускаем хэндлеры старта плагинов
     plugin_manager.run_handlers(plugin_manager.start_handlers, bot, starvell, db, plugin_manager)
@@ -247,19 +254,12 @@ async def main():
         await starvell.stop()
         await db.close()
         
-        # Уведомляем админов об остановке
-        from bot.core import get_notification_manager
-        notif_manager = get_notification_manager()
-        if notif_manager:
-            try:
-                await notif_manager.notify_all_admins(
-                    NotificationType.BOT_STOPPED,
-                    "Бот был остановлен администратором.",
-                    force=True
-                )
-            except:
-                pass
         
+        # Логируем остановку
+        try:
+            log_event("bot_stopped", "clean shutdown")
+        except Exception:
+            pass
         await bot.session.close()
         logger.info("Бот остановлен")
 

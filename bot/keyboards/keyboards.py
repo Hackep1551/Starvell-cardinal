@@ -9,10 +9,11 @@ from aiogram.types import (
     InlineKeyboardButton,
 )
 
+from bot.core.config import BotConfig
+
 logger = logging.getLogger(__name__)
 
 
-# === База данных ===
 class CBT:
     """Типы callback кнопок"""
     # Главное меню
@@ -51,15 +52,12 @@ class CBT:
     SWITCH_AUTO_RESTORE = "switch:auto_restore"
     SWITCH_AUTO_READ = "switch:auto_read"
     SWITCH_AUTO_TICKET = "switch:auto_ticket"
-    SWITCH_AUTO_UPDATE = "switch:auto_update"
     SWITCH_AUTO_INSTALL = "switch:auto_install"
     SWITCH_ORDER_CONFIRM = "switch:order_confirm"
     SWITCH_REVIEW_RESPONSE = "switch:review_resp"
+    SWITCH_USE_WATERMARK = "switch:use_watermark"
     
     # Настройки авто-тикета
-    AUTO_TICKET_SETTINGS = "autoticket_settings"
-    AUTO_TICKET_SET_INTERVAL = "autoticket_set_interval"
-    AUTO_TICKET_SET_MAX = "autoticket_set_max"
     AUTO_TICKET_SETTINGS = "autoticket_settings"
     AUTO_TICKET_SET_INTERVAL = "autoticket_set_interval"
     AUTO_TICKET_SET_MAX = "autoticket_set_max"
@@ -71,6 +69,11 @@ class CBT:
     NOTIF_ORDERS = "notif:orders"
     NOTIF_RESTORE = "notif:restore"
     NOTIF_START = "notif:start"
+    NOTIF_STOP = "notif:stop"
+    NOTIF_AUTO_TICKET = "notif:auto_ticket"
+    NOTIF_ORDER_CONFIRMED = "notif:order_confirmed"
+    NOTIF_REVIEW = "notif:review"
+    NOTIF_AUTO_RESPONSES = "notif:auto_responses"
     
     # Автовыдача
     AD_LOTS_LIST = "ad_lots"
@@ -205,7 +208,7 @@ def get_main_menu_page_2(update_available: bool = False) -> InlineKeyboardMarkup
         ],
         [
             InlineKeyboardButton(
-                text="⚙️ Авто-тикеты (Бета)",
+                text="⚙️ Авто-тикеты (Временно отключено)",
                 callback_data=CBT.AUTO_TICKET_SETTINGS
             ),
         ],
@@ -230,7 +233,7 @@ def get_main_menu_page_2(update_available: bool = False) -> InlineKeyboardMarkup
         [
             InlineKeyboardButton(
                 text="🔗 Сообщить об проблеме",
-                url=os.environ.get('TELEGRAM_SUPPORT_URL', 'https://t.me/Starvell_cardinal_support')
+                url=os.environ.get('TELEGRAM_SUPPORT_URL', 'https://t.me/starvellbugreport_bot')
             ),
         ],
         [
@@ -310,6 +313,12 @@ def get_global_switches_menu(
         ],
         [
             InlineKeyboardButton(
+                text=switch_text("Использовать вотермарку", BotConfig.USE_WATERMARK()),
+                callback_data=CBT.SWITCH_USE_WATERMARK
+            ),
+        ],
+        [
+            InlineKeyboardButton(
                 text="🔙 Назад",
                 callback_data=CBT.MAIN
             ),
@@ -324,8 +333,21 @@ def get_notifications_menu(
     orders: bool,
     restore: bool,
     start: bool,
+    stop: bool = False,
+    auto_ticket: bool = False,
+    order_confirm: bool = False,
+    review: bool = False,
+    auto_responses: bool = False,
 ) -> InlineKeyboardMarkup:
-    """Меню настроек уведомлений (без уведомлений о деактивации/поднятии лота)"""
+    """Меню настроек уведомлений
+
+    Поддерживает дополнительные переключатели:
+    - stop: уведомления об остановке бота
+    - auto_ticket: уведомления об отправке авто-тикетов
+    - order_confirm: уведомления о подтверждении заказа
+    - review: уведомления о новых отзывах
+    - auto_responses: уведомления о выполнении автоответов/команд
+    """
     
     def switch_text(name: str, enabled: bool) -> str:
         emoji = bool_to_emoji(enabled)
@@ -337,11 +359,21 @@ def get_notifications_menu(
                 text=switch_text("Новые сообщения", messages),
                 callback_data=CBT.NOTIF_MESSAGES
             ),
-        ],
-        [
             InlineKeyboardButton(
                 text=switch_text("Новые заказы", orders),
                 callback_data=CBT.NOTIF_ORDERS
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text=switch_text("Получена команда (автоответы)", auto_responses),
+                callback_data=CBT.NOTIF_AUTO_RESPONSES
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text=switch_text("Подтверждение заказа", order_confirm),
+                callback_data=CBT.NOTIF_ORDER_CONFIRMED
             ),
         ],
         [
@@ -352,8 +384,24 @@ def get_notifications_menu(
         ],
         [
             InlineKeyboardButton(
+                text=switch_text("Отправка тикета", auto_ticket),
+                callback_data=CBT.NOTIF_AUTO_TICKET
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text=switch_text("Ответ на отзыв", review),
+                callback_data=CBT.NOTIF_REVIEW
+            ),
+        ],
+        [
+            InlineKeyboardButton(
                 text=switch_text("Запуск бота", start),
                 callback_data=CBT.NOTIF_START
+            ),
+            InlineKeyboardButton(
+                text=switch_text("Остановка бота", stop),
+                callback_data=CBT.NOTIF_STOP
             ),
         ],
         [
