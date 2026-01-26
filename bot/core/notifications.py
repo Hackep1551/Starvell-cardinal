@@ -125,6 +125,8 @@ class NotificationManager:
             NotificationType.LOT_BUMPED: BotConfig.NOTIFY_LOT_BUMP,
             NotificationType.LOT_DEACTIVATED: BotConfig.NOTIFY_LOT_DEACTIVATE,
             NotificationType.BOT_STARTED: BotConfig.NOTIFY_BOT_START,
+            NotificationType.BOT_STOPPED: BotConfig.NOTIFY_BOT_STOP,
+            NotificationType.ORDER_CONFIRMED: BotConfig.NOTIFY_ORDER_CONFIRMED,
         }
         
         # Если есть соответствующая настройка в конфиге

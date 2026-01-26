@@ -131,6 +131,18 @@ class StarvellService:
             raise RuntimeError("API не инициализирован")
             
         async with self._lock:
+            # Добавляем вотермарк в сообщение при отправке в Starvell, если включено
+            try:
+                from bot.core.config import BotConfig
+                if BotConfig.USE_WATERMARK():
+                    wm = BotConfig.WATERMARK() or ''
+                    if wm:
+                        # Добавляем в начало, затем пустая строка и оригинальное сообщение
+                        content = f"{wm}\n\n{content}"
+            except Exception:
+                # Не критично — продолжаем без вотермарки
+                pass
+
             result = await self.api.send_message(chat_id, content)
             await self.db.add_sent_message(chat_id, content)
             return result
