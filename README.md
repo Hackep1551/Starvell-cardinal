@@ -312,4 +312,6 @@ python main.py
 
 ---
 
+> Keywords: Telegram bot, Python, aiogram, Starvell, marketplace automation, autodelivery
+
 **Спасибо за использование Starvell Cardinal!** 🚀
