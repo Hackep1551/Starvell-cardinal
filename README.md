@@ -1,8 +1,8 @@
 # 🤖 Starvell Cardinal
-open-source Telegram bot на Python (aiogram)
-для автоматизации маркетплейса Starvell.com:
+open-source Telegram bot на Python (aiogram) для автоматизации маркетплейса Starvell.com:
 автодоставка товаров, управление лотами,
 мониторинг заказов и продаж. 
+> An open-source Python Telegram bot for automating Starvell marketplace workflows.
 
 **Автор:** Hackep1551 | **Лицензия:** MIT
 
