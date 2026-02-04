@@ -114,7 +114,7 @@ async def main():
     # Сервис авто-тикетов
     from bot.features.autoticket import init_autoticket_service
     # Получаем сессию напрямую из конфига
-    session_cookie = get_config_manager().get('Starvell', 'session', '')
+    session_cookie = get_config_manager().get('Starvell', 'session_cookie', '')
     autoticket_service = init_autoticket_service(session_cookie)
     
     # Менеджер плагинов

@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 class NotificationType:
     """Типы уведомлений"""
     NEW_MESSAGE = "new_message"
+    SUPPORT_MESSAGE = "support_message"
     NEW_ORDER = "new_order"
     ORDER_CONFIRMED = "order_confirmed"
     ORDER_CANCELLED = "order_cancelled"
@@ -39,6 +40,7 @@ class NotificationManager:
     # Эмодзи для разных типов уведомлений
     EMOJI_MAP = {
         NotificationType.NEW_MESSAGE: "💬",
+        NotificationType.SUPPORT_MESSAGE: "🛡️",
         NotificationType.NEW_ORDER: "📦",
         NotificationType.ORDER_CONFIRMED: "✅",
         NotificationType.ORDER_CANCELLED: "❌",
@@ -59,6 +61,7 @@ class NotificationManager:
     # Заголовки для разных типов
     TITLE_MAP = {
         NotificationType.NEW_MESSAGE: "Новое сообщение",
+        NotificationType.SUPPORT_MESSAGE: "Сообщение от поддержки",
         NotificationType.NEW_ORDER: "Новый заказ",
         NotificationType.ORDER_CONFIRMED: "Заказ подтверждён",
         NotificationType.ORDER_CANCELLED: "Заказ отменён",
@@ -120,6 +123,7 @@ class NotificationManager:
         # Маппинг типов на настройки конфига
         config_map = {
             NotificationType.NEW_MESSAGE: BotConfig.NOTIFY_NEW_MESSAGES,
+            NotificationType.SUPPORT_MESSAGE: BotConfig.NOTIFY_SUPPORT_MESSAGES,
             NotificationType.NEW_ORDER: BotConfig.NOTIFY_NEW_ORDERS,
             NotificationType.LOT_RESTORED: BotConfig.NOTIFY_LOT_RESTORE,
             NotificationType.LOT_BUMPED: BotConfig.NOTIFY_LOT_BUMP,
@@ -295,6 +299,94 @@ class NotificationManager:
             display_name,  # Уже содержит nickname или ID
             content, 
             message_id
+        )
+    
+    async def notify_support_message(
+        self,
+        chat_id: str,
+        author: str,
+        content: str,
+        message_id: Optional[str] = None,
+        author_nickname: Optional[str] = None,
+        author_roles: Optional[List[str]] = None
+    ):
+        """Уведомление о сообщении от поддержки/модерации"""
+        from bot.keyboards.keyboards import get_select_template_menu
+        from bot.core.templates import get_template_manager
+        
+        # Используем nickname если есть, иначе ID
+        display_name = author_nickname if author_nickname else author
+        
+        # Определяем роль для отображения
+        role_emoji = "🛡️"
+        role_name = "Поддержка"
+        
+        if author_roles:
+            if "SUPPORT" in author_roles:
+                role_emoji = "🛡️"
+                role_name = "Поддержка"
+            elif "MODERATOR" in author_roles or "ADMIN" in author_roles:
+                role_emoji = "⚔️"
+                role_name = "Модератор"
+        
+        # Форматируем сообщение с указанием роли
+        message = f"{role_emoji} <b>{role_name} - {display_name}:</b>\n\n{content}"
+        
+        # Создаём кнопки
+        buttons = []
+
+        # Формируем первую строку: Ответить + Быстрые ответы (если есть chat_id)
+        row1 = []
+
+        # Кнопка "Ответить" - используем полный chat_id (UUID или numeric)
+        if chat_id:
+            reply_callback = f"r:{chat_id}"
+            # Telegram callback_data limit is 64 bytes; UUIDs are short enough
+            if len(reply_callback) <= 64:
+                row1.append(
+                    InlineKeyboardButton(
+                        text="💬 Ответить",
+                        callback_data=reply_callback
+                    )
+                )
+
+        # Проверяем количество заготовок
+        template_manager = get_template_manager()
+        templates_count = template_manager.count()
+
+        # Кнопка "Быстрые ответы" — показываем всегда, если есть chat_id
+        if chat_id:
+            tpl_text = f"📝 Быстрые ответы ({templates_count})" if templates_count > 0 else "📝 Быстрые ответы"
+            tpl_callback = f"show_templates:{chat_id}"
+            # Проверяем длину callback_data (лимит Telegram - 64 байта)
+            if len(tpl_callback.encode('utf-8')) <= 64:
+                row1.append(
+                    InlineKeyboardButton(
+                        text=tpl_text,
+                        callback_data=tpl_callback
+                    )
+                )
+            else:
+                logger.warning(f"Callback data для быстрых ответов слишком длинный: {len(tpl_callback.encode('utf-8'))} байт (chat_id: {chat_id[:20]}...)")
+
+        if row1:
+            buttons.append(row1)
+
+        # Кнопка "Перейти в чат" - URL кнопка (в новой строке)
+        chat_url = f"https://starvell.com/chat/{chat_id}"
+        buttons.append([
+            InlineKeyboardButton(
+                text="🔗 Перейти в чат",
+                url=chat_url
+            )
+        ])
+
+        keyboard = InlineKeyboardMarkup(inline_keyboard=buttons) if buttons else None
+        
+        await self.notify_all_admins(
+            NotificationType.SUPPORT_MESSAGE,
+            message,
+            keyboard=keyboard
         )
     
     async def notify_new_order(

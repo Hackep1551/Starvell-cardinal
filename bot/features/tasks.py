@@ -151,14 +151,15 @@ class BackgroundTasks:
                     if BotConfig.DEBUG():
                         logger.debug(f"Сообщение от пользователя {author_id} игнорируется (в черном списке)")
                     continue
-                    continue
                 
-                # Получаем username напрямую из данных сообщения
-                # API возвращает message.author.username
+                # Получаем username и роли напрямую из данных сообщения
+                # API возвращает message.author.username и message.author.roles
                 author_username = None
+                author_roles = []
                 author_data = message.get("author", {})
                 if author_data:
                     author_username = author_data.get("username") or author_data.get("name")
+                    author_roles = author_data.get("roles", [])
                 
                 # Если нет в сообщении, пробуем найти в participants чата
                 if not author_username and chat:
@@ -186,15 +187,30 @@ class BackgroundTasks:
                     
                 if message_id and message_id in self._seen_messages[chat_id]:
                     continue
-                    
+                
+                # Проверяем, является ли сообщение от поддержки/модерации
+                is_support = author_roles and ("SUPPORT" in author_roles or "MODERATOR" in author_roles or "ADMIN" in author_roles)
+                
                 # Отправляем уведомление через NotificationManager
-                await self.notifier.notify_new_message(
-                    chat_id=chat_id,
-                    author=str(author_id),
-                    content=content,
-                    message_id=str(message_id) if message_id else None,
-                    author_nickname=author_username  
-                )
+                if is_support:
+                    # Уведомление о сообщении от поддержки (если включено)
+                    await self.notifier.notify_support_message(
+                        chat_id=chat_id,
+                        author=str(author_id),
+                        content=content,
+                        message_id=str(message_id) if message_id else None,
+                        author_nickname=author_username,
+                        author_roles=author_roles
+                    )
+                else:
+                    # Обычное уведомление о новом сообщении
+                    await self.notifier.notify_new_message(
+                        chat_id=chat_id,
+                        author=str(author_id),
+                        content=content,
+                        message_id=str(message_id) if message_id else None,
+                        author_nickname=author_username  
+                    )
                 
                 # Запоминаем это сообщение
                 if message_id:
@@ -202,9 +218,11 @@ class BackgroundTasks:
                     
                 # Проверяем кастомные команды
                 await self._check_custom_command(chat_id, content, author_id)
-                    
+                
+                # Логируем с указанием роли если есть
+                role_prefix = f"[{', '.join(author_roles)}] " if author_roles else ""
                 display_name = author_username or author_id
-                logger.info(f"📩 Новое сообщение от {display_name}: {content[:50]}...")
+                logger.info(f"📩 Новое сообщение от {role_prefix}{display_name}: {content[:50]}...")
                     
         except Exception as e:
             logger.error(f"Ошибка при проверке новых сообщений: {e}", exc_info=True)
@@ -467,33 +485,47 @@ class BackgroundTasks:
             unconfirmed = await autoticket.get_unconfirmed_orders(self.starvell, hours=hours)
             
             if not unconfirmed:
+                logger.debug("Неподтверждённых заказов не найдено")
                 return
                 
-            logger.info(f"Найдено {len(unconfirmed)} заказов для авто-тикета")
+            logger.info(f"📋 Найдено {len(unconfirmed)} заказов для авто-тикета")
             
-            # Разбиваем на пачки
-            max_orders = BotConfig.AUTO_TICKET_MAX_ORDERS()
-            order_ids = [str(o.get('id')) for o in unconfirmed]
+            # Отправляем тикет для каждого заказа отдельно
+            # (API Starvell поддерживает только 1 заказ на тикет)
+            max_orders = min(BotConfig.AUTO_TICKET_MAX_ORDERS(), len(unconfirmed))
             
-            chunks = [order_ids[i:i + max_orders] for i in range(0, len(order_ids), max_orders)]
+            success_count = 0
+            error_count = 0
             
-            for chunk in chunks:
-                success, msg = await autoticket.send_ticket(chunk)
+            for i, order in enumerate(unconfirmed[:max_orders]):
+                order_id = order.get('id')
+                if not order_id:
+                    continue
                 
-                # Уведомляем админов
+                # Отправляем тикет
+                success, msg = await autoticket.send_ticket([order_id])
+                
+                if success:
+                    success_count += 1
+                else:
+                    error_count += 1
+                
+                # Уведомляем админов о каждом тикете (если включено)
                 if BotConfig.NOTIFY_AUTO_TICKET():
                     if success:
                         text = (
-                            f"🎫 <b>Авто-тикет отправлен!</b>\n\n"
-                            f"Заказы: {', '.join(chunk)}\n"
-                            f"Результат: {msg}"
+                            f"🎫 <b>Авто-тикет отправлен</b>\n\n"
+                            f"📦 Заказ: <code>{order_id}</code>\n"
+                            f"⏰ Возраст: {order.get('age_hours', 0):.1f}ч\n"
+                            f"✅ {msg}"
                         )
                         force_notif = False
                     else:
                         text = (
                             f"❌ <b>Ошибка авто-тикета</b>\n\n"
-                            f"Заказы: {', '.join(chunk)}\n"
-                            f"Ошибка: {msg}"
+                            f"📦 Заказ: <code>{order_id}</code>\n"
+                            f"⏰ Возраст: {order.get('age_hours', 0):.1f}ч\n"
+                            f"❗ {msg}"
                         )
                         force_notif = True
                         
@@ -503,9 +535,23 @@ class BackgroundTasks:
                         force=force_notif
                     )
                 
-                # Пауза между отправками тикетов чтобы не спамить
-                if len(chunks) > 1:
-                    await asyncio.sleep(60) 
+                # Пауза между отправками тикетов (10 секунд)
+                if i < max_orders - 1:
+                    await asyncio.sleep(10)
+            
+            # Итоговое уведомление
+            if success_count > 0 or error_count > 0:
+                summary = (
+                    f"📊 <b>Итог авто-тикетов</b>\n\n"
+                    f"✅ Отправлено: {success_count}\n"
+                    f"❌ Ошибок: {error_count}\n"
+                    f"📋 Всего обработано: {success_count + error_count}"
+                )
+                await self.notifier.notify_all_admins(
+                    "auto_ticket",
+                    summary,
+                    force=False
+                )
             
         except Exception as e:
-            logger.error(f"Ошибка в цикле авто-тикетов: {e}", exc_info=True)
+            logger.error(f"❌ Ошибка в цикле авто-тикетов: {e}", exc_info=True)
