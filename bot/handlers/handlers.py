@@ -1339,6 +1339,7 @@ async def callback_notifications(callback: CallbackQuery):
     # Получаем текущие настройки
     messages = BotConfig.NOTIFY_NEW_MESSAGES()
     orders = BotConfig.NOTIFY_NEW_ORDERS()
+    support_messages = BotConfig.NOTIFY_SUPPORT_MESSAGES()
     restore = BotConfig.NOTIFY_LOT_RESTORE()
     start = BotConfig.NOTIFY_BOT_START()
     stop = BotConfig.NOTIFY_BOT_STOP()
@@ -1352,7 +1353,7 @@ async def callback_notifications(callback: CallbackQuery):
     
     await callback.message.edit_text(
         status_text,
-        reply_markup=get_notifications_menu(messages, orders, restore, start, stop, auto_ticket, order_confirm, review, auto_responses)
+        reply_markup=get_notifications_menu(messages, orders, restore, start, stop, auto_ticket, order_confirm, review, auto_responses, support_messages)
     )
 
 
@@ -1369,6 +1370,7 @@ async def callback_notif_messages(callback: CallbackQuery):
     # Обновляем меню
     messages = not current
     orders = BotConfig.NOTIFY_NEW_ORDERS()
+    support_messages = BotConfig.NOTIFY_SUPPORT_MESSAGES()
     restore = BotConfig.NOTIFY_LOT_RESTORE()
     start = BotConfig.NOTIFY_BOT_START()
     stop = BotConfig.NOTIFY_BOT_STOP()
@@ -1381,7 +1383,7 @@ async def callback_notif_messages(callback: CallbackQuery):
     
     await callback.message.edit_text(
         status_text,
-        reply_markup=get_notifications_menu(messages, orders, restore, start, stop, auto_ticket, order_confirm, review, auto_responses)
+        reply_markup=get_notifications_menu(messages, orders, restore, start, stop, auto_ticket, order_confirm, review, auto_responses, support_messages)
     )
 
 
@@ -1398,6 +1400,7 @@ async def callback_notif_orders(callback: CallbackQuery):
     # Обновляем меню
     messages = BotConfig.NOTIFY_NEW_MESSAGES()
     orders = not current
+    support_messages = BotConfig.NOTIFY_SUPPORT_MESSAGES()
     restore = BotConfig.NOTIFY_LOT_RESTORE()
     start = BotConfig.NOTIFY_BOT_START()
     stop = BotConfig.NOTIFY_BOT_STOP()
@@ -1410,7 +1413,37 @@ async def callback_notif_orders(callback: CallbackQuery):
     
     await callback.message.edit_text(
         status_text,
-        reply_markup=get_notifications_menu(messages, orders, restore, start, stop, auto_ticket, order_confirm, review, auto_responses)
+        reply_markup=get_notifications_menu(messages, orders, restore, start, stop, auto_ticket, order_confirm, review, auto_responses, support_messages)
+    )
+
+
+@router.callback_query(F.data == CBT.NOTIF_SUPPORT_MESSAGES)
+async def callback_notif_support_messages(callback: CallbackQuery):
+    """Переключить уведомления о сообщениях от поддержки"""
+    current = BotConfig.NOTIFY_SUPPORT_MESSAGES()
+    BotConfig.update(**{"notifications.support_messages": not current})
+    
+    
+    status = "включены" if not current else "выключены"
+    await callback.answer(f"Уведомления от поддержки {status}", show_alert=False)
+    
+    # Обновляем меню
+    messages = BotConfig.NOTIFY_NEW_MESSAGES()
+    orders = BotConfig.NOTIFY_NEW_ORDERS()
+    support_messages = not current
+    restore = BotConfig.NOTIFY_LOT_RESTORE()
+    start = BotConfig.NOTIFY_BOT_START()
+    stop = BotConfig.NOTIFY_BOT_STOP()
+    auto_ticket = BotConfig.NOTIFY_AUTO_TICKET()
+    order_confirm = BotConfig.NOTIFY_ORDER_CONFIRMED()
+    review = BotConfig.NOTIFY_REVIEW()
+    auto_responses = BotConfig.NOTIFY_AUTO_RESPONSES()
+    
+    status_text = "🔔 <b>Настройки уведомлений</b>\n\nНастройте какие уведомления, которые вам нужны получать."
+    
+    await callback.message.edit_text(
+        status_text,
+        reply_markup=get_notifications_menu(messages, orders, restore, start, stop, auto_ticket, order_confirm, review, auto_responses, support_messages)
     )
 
 
@@ -1439,7 +1472,7 @@ async def callback_notif_restore(callback: CallbackQuery):
     
     await callback.message.edit_text(
         status_text,
-        reply_markup=get_notifications_menu(messages, orders, restore, start, stop, auto_ticket, order_confirm, review, auto_responses)
+        reply_markup=get_notifications_menu(messages, orders, restore, start, stop, auto_ticket, order_confirm, review, auto_responses, BotConfig.NOTIFY_SUPPORT_MESSAGES())
     )
 
 
@@ -1468,7 +1501,7 @@ async def callback_notif_start(callback: CallbackQuery):
     
     await callback.message.edit_text(
         status_text,
-        reply_markup=get_notifications_menu(messages, orders, restore, start, stop, auto_ticket, order_confirm, review, auto_responses)
+        reply_markup=get_notifications_menu(messages, orders, restore, start, stop, auto_ticket, order_confirm, review, auto_responses, BotConfig.NOTIFY_SUPPORT_MESSAGES())
     )
 
 
@@ -1497,7 +1530,7 @@ async def callback_notif_auto_responses(callback: CallbackQuery):
 
     await callback.message.edit_text(
         status_text,
-        reply_markup=get_notifications_menu(messages, orders, restore, start, stop, auto_ticket, order_confirm, review, auto_responses)
+        reply_markup=get_notifications_menu(messages, orders, restore, start, stop, auto_ticket, order_confirm, review, auto_responses, BotConfig.NOTIFY_SUPPORT_MESSAGES())
     )
 
 
@@ -1525,7 +1558,7 @@ async def callback_notif_order_confirmed(callback: CallbackQuery):
 
     await callback.message.edit_text(
         status_text,
-        reply_markup=get_notifications_menu(messages, orders, restore, start, stop, auto_ticket, order_confirm, review, auto_responses)
+        reply_markup=get_notifications_menu(messages, orders, restore, start, stop, auto_ticket, order_confirm, review, auto_responses, BotConfig.NOTIFY_SUPPORT_MESSAGES())
     )
 
 
@@ -1553,7 +1586,7 @@ async def callback_notif_auto_ticket(callback: CallbackQuery):
 
     await callback.message.edit_text(
         status_text,
-        reply_markup=get_notifications_menu(messages, orders, restore, start, stop, auto_ticket, order_confirm, review, auto_responses)
+        reply_markup=get_notifications_menu(messages, orders, restore, start, stop, auto_ticket, order_confirm, review, auto_responses, BotConfig.NOTIFY_SUPPORT_MESSAGES())
     )
 
 
@@ -1581,7 +1614,7 @@ async def callback_notif_stop(callback: CallbackQuery):
 
     await callback.message.edit_text(
         status_text,
-        reply_markup=get_notifications_menu(messages, orders, restore, start, stop, auto_ticket, order_confirm, review, auto_responses)
+        reply_markup=get_notifications_menu(messages, orders, restore, start, stop, auto_ticket, order_confirm, review, auto_responses, BotConfig.NOTIFY_SUPPORT_MESSAGES())
     )
 
 
@@ -1609,7 +1642,7 @@ async def callback_notif_review(callback: CallbackQuery):
 
     await callback.message.edit_text(
         status_text,
-        reply_markup=get_notifications_menu(messages, orders, restore, start, stop, auto_ticket, order_confirm, review, auto_responses)
+        reply_markup=get_notifications_menu(messages, orders, restore, start, stop, auto_ticket, order_confirm, review, auto_responses, BotConfig.NOTIFY_SUPPORT_MESSAGES())
     )
 
 

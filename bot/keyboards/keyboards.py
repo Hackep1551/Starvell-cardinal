@@ -66,6 +66,7 @@ class CBT:
     
     # Уведомления
     NOTIF_MESSAGES = "notif:messages"
+    NOTIF_SUPPORT_MESSAGES = "notif:support"
     NOTIF_ORDERS = "notif:orders"
     NOTIF_RESTORE = "notif:restore"
     NOTIF_START = "notif:start"
@@ -338,6 +339,7 @@ def get_notifications_menu(
     order_confirm: bool = False,
     review: bool = False,
     auto_responses: bool = False,
+    support_messages: bool = True,
 ) -> InlineKeyboardMarkup:
     """Меню настроек уведомлений
 
@@ -347,6 +349,7 @@ def get_notifications_menu(
     - order_confirm: уведомления о подтверждении заказа
     - review: уведомления о новых отзывах
     - auto_responses: уведомления о выполнении автоответов/команд
+    - support_messages: уведомления о сообщениях от поддержки/модерации
     """
     
     def switch_text(name: str, enabled: bool) -> str:
@@ -362,6 +365,12 @@ def get_notifications_menu(
             InlineKeyboardButton(
                 text=switch_text("Новые заказы", orders),
                 callback_data=CBT.NOTIF_ORDERS
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text=switch_text("Сообщения от поддержки", support_messages),
+                callback_data=CBT.NOTIF_SUPPORT_MESSAGES
             ),
         ],
         [

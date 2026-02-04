@@ -10,12 +10,14 @@ from bot.core.config import BotConfig, get_config_manager
 
 logger = logging.getLogger(__name__)
 
-# Константы для формы тикета
+# API endpoints
+STARVELL_SUPPORT_API = "https://starvell.com/api/support/create"
+STARVELL_BASE_URL = "https://starvell.com"
+
+# Константы для формы тикета (из реального API)
 TICKET_TYPE_ORDER_ISSUE = "1"
 ORDER_USER_TYPE_SELLER = "2"
 ORDER_TOPIC_BUYER_FORGOT_CONFIRM = "501"
-
-STARVELL_SUPPORT_URL = "https://starvell.com/support/new"
 
 
 class AutoTicketService:
@@ -39,10 +41,10 @@ class AutoTicketService:
         description: Optional[str] = None
     ) -> Tuple[bool, str]:
         """
-        Отправить тикет в поддержку Starvell
+        Отправить тикет в поддержку Starvell через API
         
         Args:
-            order_ids: Список ID заказов
+            order_ids: Список ID заказов (UUID формат, будет сконвертирован в short ID)
             subject: Тема тикета
             description: Описание (если None, будет сгенерировано автоматически)
             
@@ -51,53 +53,85 @@ class AutoTicketService:
         """
         if not order_ids:
             return False, "Нет заказов для отправки"
-            
+        
+        if not self.session_cookie:
+            return False, "Отсутствует session_cookie"
+        
+        # Берем первый заказ для формы (можно отправить только 1 заказ за раз)
+        order_id_full = order_ids[0]
+        
+        # Конвертируем UUID в short ID (#41D4CCAE формат)
+        # Берем последние 8 символов UUID без дефисов
+        order_id_short = order_id_full.replace("-", "")[-8:].upper()
+        order_id_formatted = f"#{order_id_short}"
+        
         # Формируем описание
         if not description:
-            order_ids_str = ", ".join(order_ids)
-            description = f"Номера заказов: {order_ids_str}"
+            description = subject
         
-        # Подготавливаем данные формы
-        form_data = {
-            "ticketType": TICKET_TYPE_ORDER_ISSUE,
-            "orderId": ", ".join(order_ids),  # Можно несколько через запятую
-            "orderUserTypeId": ORDER_USER_TYPE_SELLER,
-            "orderTopicId": ORDER_TOPIC_BUYER_FORGOT_CONFIRM,
-            "subject": subject,
-            "description": description
-        }
+        # Подготавливаем данные формы (FormData, НЕ JSON!)
+        form_data = aiohttp.FormData()
+        form_data.add_field('ticketType', TICKET_TYPE_ORDER_ISSUE)
+        form_data.add_field('subject', subject)
+        form_data.add_field('description', description)
+        form_data.add_field('orderId', order_id_formatted)
+        form_data.add_field('orderUserTypeId', ORDER_USER_TYPE_SELLER)
+        form_data.add_field('orderTopicId', ORDER_TOPIC_BUYER_FORGOT_CONFIRM)
         
         headers = {
-            "Content-Type": "application/json",
             "Cookie": f"session={self.session_cookie}",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Origin": "https://starvell.com",
-            "Referer": STARVELL_SUPPORT_URL
+            "Origin": STARVELL_BASE_URL,
+            "Referer": f"{STARVELL_BASE_URL}/support/new",
+            "Accept": "*/*",
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "same-origin"
         }
         
         try:
             async with aiohttp.ClientSession() as session:
-                # Пробуем POST запрос
+                logger.debug(f"Отправка тикета для заказа {order_id_full}")
+                logger.debug(f"Short ID: {order_id_formatted}")
+                logger.debug(f"Тема: {subject}")
+                
                 async with session.post(
-                    STARVELL_SUPPORT_URL,
-                    json=form_data,
+                    STARVELL_SUPPORT_API,
+                    data=form_data,
                     headers=headers,
                     timeout=aiohttp.ClientTimeout(total=30)
                 ) as response:
-                    if response.status in (200, 201, 302):
-                        logger.info(f"✅ Тикет отправлен для заказов: {', '.join(order_ids)}")
-                        return True, f"Тикет отправлен для заказов: {', '.join(order_ids)}"
+                    response_text = await response.text()
+                    
+                    logger.debug(f"Ответ API: {response.status}")
+                    if BotConfig.DEBUG():
+                        logger.debug(f"Тело ответа: {response_text[:500]}")
+                    
+                    if response.status == 200:
+                        logger.info(f"✅ Тикет отправлен для заказа: {order_id_formatted} ({order_id_full[:16]}...)")
+                        
+                        if len(order_ids) > 1:
+                            return True, f"Тикет #{order_id_formatted} отправлен (из {len(order_ids)})"
+                        else:
+                            return True, f"Тикет {order_id_formatted} отправлен"
+                    elif response.status == 401:
+                        logger.error(f"❌ Ошибка авторизации (401) - проверьте session_cookie")
+                        return False, "Ошибка авторизации (истекла сессия)"
+                    elif response.status == 400:
+                        logger.error(f"❌ Неверные данные (400)")
+                        logger.error(f"Ответ: {response_text[:300]}")
+                        return False, "Неверные данные запроса"
                     else:
-                        error_text = await response.text()
-                        logger.error(f"❌ Ошибка отправки тикета: {response.status} - {error_text[:200]}")
-                        return False, f"Ошибка {response.status}"
+                        logger.error(f"❌ Ошибка отправки тикета: {response.status}")
+                        logger.error(f"Ответ: {response_text[:300]}")
+                        return False, f"Ошибка API: {response.status}"
                         
         except aiohttp.ClientError as e:
             logger.error(f"❌ Ошибка соединения при отправке тикета: {e}")
-            return False, f"Ошибка соединения: {e}"
+            return False, f"Ошибка соединения: {str(e)[:100]}"
         except Exception as e:
-            logger.error(f"❌ Неизвестная ошибка при отправке тикета: {e}")
-            return False, f"Ошибка: {e}"
+            logger.error(f"❌ Неизвестная ошибка при отправке тикета: {e}", exc_info=True)
+            return False, f"Ошибка: {str(e)[:100]}"
     
     async def get_unconfirmed_orders(self, starvell_service, hours: int = 48) -> List[dict]:
         """
@@ -108,78 +142,87 @@ class AutoTicketService:
             hours: Количество часов с момента создания заказа
             
         Returns:
-            Список заказов
+            Список заказов с ID и временем создания
         """
         try:
             # Получаем заказы через API
-            orders = await starvell_service.get_orders()
+            orders_data = await starvell_service.get_orders()
             
-            if not orders:
+            if not orders_data:
+                logger.debug("Нет заказов от API")
                 return []
             
             unconfirmed = []
             current_time = datetime.now()
             
-            for order in orders:
-                # Проверяем статус заказа
-                # Статусы: 'paid' - оплачен (нужен подтверждение), 'confirmed' - подтвержден (закрыт)
-                # Нам нужны заказы, которые ОПЛАЧЕНЫ (paid), но не закрыты
-                # Или 'wait_confirm'? Надо проверить. Обычно paid -> wait_confirm -> confirmed
-                # Предположим нам нужны заказы в статусе 'paid' или 'checked' (проверен продавцом)
-                # Но если покупатель забыл подтвердить, статус скорее всего "paid".
+            for order in orders_data:
+                # ID заказа
+                order_id = order.get("id")
+                if not order_id:
+                    continue
                 
+                # Проверяем статус заказа
+                # Статусы Starvell: CREATED, PAID, CONFIRMED, REFUND, CANCELLED
+                # Неподтвержденные = CREATED (оплачен, но покупатель не подтвердил получение)
                 status = order.get("status", "")
                 
-                # Фильтруем по статусу
-                # Нам нужны заказы, где покупатель оплатил, мы выполнили, но он не подтвердил.
-                # Обычно это статус "paid" (Оплачен).
-                if status not in ("paid", "confirmed"): # confirmed тоже добавим для теста, если вдруг
-                     # На самом деле, если статус confirmed - значит уже подтвержден.
-                     # Нам нужны заказы, которые НЕ confirmed и НЕ refund и НЕ cancelled.
-                     pass
-                
-                if status != "paid":
+                # Нам нужны заказы в статусе CREATED (awaiting confirmation)
+                if status != "CREATED":
                     continue
-                    
-                # Проверяем дату
-                order_date = order.get("date")
+                
+                # Проверяем дату создания заказа
+                created_at = order.get("createdAt")
                 order_dt = None
                 
-                if isinstance(order_date, (int, float)):
-                    # Timestamp (секунды или миллисекунды)
-                    # Если > 3000000000 - скорее всего мс
-                    if order_date > 3000000000:
-                        order_date = order_date / 1000
-                    order_dt = datetime.fromtimestamp(order_date)
-                elif isinstance(order_date, str):
-                    # ISO string
+                if isinstance(created_at, str):
+                    # ISO string формат: "2026-02-03T14:25:48.953Z"
                     try:
-                        order_dt = datetime.fromisoformat(order_date.replace('Z', '+00:00'))
-                    except ValueError:
-                        pass
+                        # Убираем Z и парсим
+                        created_at_clean = created_at.replace('Z', '+00:00')
+                        order_dt = datetime.fromisoformat(created_at_clean)
+                        # Конвертируем в naive datetime для сравнения
+                        if order_dt.tzinfo is not None:
+                            order_dt = order_dt.replace(tzinfo=None)
+                    except (ValueError, AttributeError) as e:
+                        logger.warning(f"Ошибка парсинга даты {created_at}: {e}")
+                        continue
+                elif isinstance(created_at, (int, float)):
+                    # Timestamp (секунды или миллисекунды)
+                    timestamp = created_at
+                    if timestamp > 3000000000:  # Если > 2065 год, значит миллисекунды
+                        timestamp = timestamp / 1000
+                    order_dt = datetime.fromtimestamp(timestamp)
                 
                 if not order_dt:
+                    logger.debug(f"Не удалось определить дату для заказа {order_id}")
                     continue
-                    
-                # Если offset-naive, считаем что это local time (или UTC, если из timestamp)
-                if order_dt.tzinfo is None:
-                     order_dt = order_dt.replace(tzinfo=None) # Работаем в naive, current_time тоже naive
-                else:
-                     # Приводим к naive UTC или local
-                     order_dt = order_dt.replace(tzinfo=None)
-
-                # Вычисляем возраст заказа
+                
+                # Вычисляем возраст заказа в часах
                 age = current_time - order_dt
                 age_hours = age.total_seconds() / 3600
                 
+                logger.debug(f"Заказ {order_id[:8]}... возраст {age_hours:.1f}ч (статус: {status})")
+                
+                # Если заказ старше указанного времени
                 if age_hours >= hours:
-                    unconfirmed.append(order)
-                    
-            logger.info(f"Найдено {len(unconfirmed)} неподтверждённых заказов старше {hours} ч.")
+                    unconfirmed.append({
+                        "id": order_id,
+                        "createdAt": created_at,
+                        "age_hours": age_hours,
+                        "status": status
+                    })
+            
+            if unconfirmed:
+                logger.info(f"🎫 Найдено {len(unconfirmed)} неподтверждённых заказов старше {hours}ч")
+                for o in unconfirmed[:3]:  # Показываем первые 3
+                    logger.info(f"  • {o['id'][:16]}... ({o['age_hours']:.1f}ч)")
+            else:
+                logger.debug(f"Неподтверждённых заказов старше {hours}ч не найдено")
+                
             return unconfirmed
             
         except Exception as e:
-            logger.error(f"Ошибка получения неподтверждённых заказов: {e}")
+            logger.error(f"❌ Ошибка получения неподтверждённых заказов: {e}", exc_info=True)
             return []
 
 

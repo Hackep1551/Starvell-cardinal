@@ -67,6 +67,7 @@ class ConfigManager:
             'checkInterval': '30',
             'newMessages': 'true',
             'newOrders': 'true',
+            'supportMessages': 'true',
             'lotRestore': 'false',
             'botStart': 'false',
             'botStop': 'false',
@@ -138,6 +139,7 @@ class ConfigManager:
                 'checkInterval': '30',
                 'newMessages': 'true',
                 'newOrders': 'true',
+                'supportMessages': 'true',
                 'lotRestore': 'false',
                 'botStart': 'false',
                 'botStop': 'false',
@@ -376,6 +378,10 @@ class BotConfig:
     @staticmethod
     def NOTIFY_NEW_ORDERS() -> bool:
         return _config_manager.get('Notifications', 'newOrders', True)
+    
+    @staticmethod
+    def NOTIFY_SUPPORT_MESSAGES() -> bool:
+        return _config_manager.get('Notifications', 'supportMessages', True)
     
     @staticmethod
     def NOTIFY_LOT_RESTORE() -> bool:
