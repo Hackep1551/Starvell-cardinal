@@ -6,6 +6,7 @@ import os
 import sys
 import importlib.util
 import logging
+import asyncio
 from typing import Dict, Callable, Any, Optional
 from uuid import UUID
 from pathlib import Path
@@ -290,8 +291,8 @@ class PluginManager:
             
             logger.debug(f"Хэндлеры плагина {plugin.name} зарегистрированы")
     
-    def run_handlers(self, handlers: list[Callable], *args):
-        """Выполнить список хэндлеров"""
+    async def run_handlers(self, handlers: list[Callable], *args):
+        """Выполнить список хэндлеров (поддерживает sync и async)"""
         for handler in handlers:
             try:
                 # Проверяем, включён ли плагин
@@ -300,7 +301,11 @@ class PluginManager:
                     if not self.plugins[plugin_uuid].enabled:
                         continue
                 
-                handler(*args)
+                # Проверяем, является ли хэндлер асинхронным
+                if asyncio.iscoroutinefunction(handler):
+                    await handler(*args)
+                else:
+                    handler(*args)
             except Exception as e:
                 logger.error(f"Ошибка выполнения хэндлера {handler.__name__}: {e}")
                 logger.debug("TRACEBACK", exc_info=True)

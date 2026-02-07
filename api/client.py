@@ -277,12 +277,41 @@ class StarAPI:
     
     async def get_sells(self) -> Dict[str, Any]:
         """
-        Получить список продаж
+        Получить список продаж (только первые 20 через Next.js Data API)
+        
+        ⚠️ DEPRECATED: Используйте get_all_orders() для получения ВСЕХ заказов
         
         Returns:
-            dict: Данные о продажах
+            dict: Данные о продажах (ограничено 20 заказами)
         """
         return await self._get_next_data("account/sells.json")
+    
+    async def get_all_orders(self, status: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        Получить ВСЕ заказы через POST /api/orders/list (до 150+ заказов)
+        
+        Args:
+            status: Фильтр по статусу ("CREATED", "COMPLETED", "REFUND", "PRE_CREATED")
+                   Если None - возвращает все заказы
+        
+        Returns:
+            list: Список всех заказов
+        """
+        # Формируем payload для API
+        payload = {"filter": {}}
+        
+        if status:
+            payload["filter"]["status"] = status
+        
+        # POST запрос к /api/orders/list
+        data = await self.session.post_json(
+            f"{self.config.API_URL}/orders/list",
+            data=payload,
+            referer=f"{self.config.BASE_URL}/account/sells",
+        )
+        
+        # API возвращает список заказов напрямую
+        return data if isinstance(data, list) else []
         
     async def refund_order(self, order_id: str) -> Dict[str, Any]:
         """

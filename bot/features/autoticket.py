@@ -5,6 +5,9 @@ import logging
 from typing import List, Optional, Tuple
 import aiohttp
 from datetime import datetime
+import time
+import json
+from pathlib import Path
 
 from bot.core.config import BotConfig, get_config_manager
 
@@ -14,14 +17,12 @@ logger = logging.getLogger(__name__)
 STARVELL_SUPPORT_API = "https://starvell.com/api/support/create"
 STARVELL_BASE_URL = "https://starvell.com"
 
-# Константы для формы тикета (из реального API)
-TICKET_TYPE_ORDER_ISSUE = "1"
-ORDER_USER_TYPE_SELLER = "2"
-ORDER_TOPIC_BUYER_FORGOT_CONFIRM = "501"
-
 
 class AutoTicketService:
     """Сервис для автоматической отправки тикетов в поддержку Starvell"""
+    
+    # Путь к файлу с кешем времени последнего тикета
+    CACHE_FILE = Path("cache") / "last_ticket_time.json"
     
     def __init__(self, session_cookie: str):
         """
@@ -32,7 +33,96 @@ class AutoTicketService:
         """
         self.session_cookie = session_cookie
         self._last_ticket_time = 0
-        self._ticket_cooldown = 3600  # 1 час между тикетами
+        
+        # Загружаем время последнего тикета из кеша
+        self._load_last_ticket_time()
+    
+    def _load_last_ticket_time(self):
+        """Загрузить время последнего тикета из файла"""
+        try:
+            if self.CACHE_FILE.exists():
+                with open(self.CACHE_FILE, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    self._last_ticket_time = data.get('last_ticket_time', 0)
+                    
+                    if self._last_ticket_time > 0:
+                        last_time = datetime.fromtimestamp(self._last_ticket_time)
+                        logger.info(f"📋 Загружено время последнего тикета: {last_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        except Exception as e:
+            logger.warning(f"⚠️ Не удалось загрузить кеш последнего тикета: {e}")
+            self._last_ticket_time = 0
+    
+    def _save_last_ticket_time(self):
+        """Сохранить время последнего тикета в файл"""
+        try:
+            # Создаём директорию cache если её нет
+            self.CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+            
+            data = {
+                'last_ticket_time': self._last_ticket_time,
+                'last_ticket_date': datetime.fromtimestamp(self._last_ticket_time).isoformat()
+            }
+            
+            with open(self.CACHE_FILE, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+            
+            logger.debug(f"💾 Сохранено время последнего тикета в кеш")
+        except Exception as e:
+            logger.error(f"❌ Не удалось сохранить кеш последнего тикета: {e}")
+        
+    def _get_ticket_type(self) -> str:
+        """Получить тип тикета из конфига"""
+        return BotConfig.AUTO_TICKET_TYPE()
+    
+    def _get_user_type_id(self) -> str:
+        """Получить ID типа пользователя из конфига"""
+        return BotConfig.AUTO_TICKET_USER_TYPE_ID()
+    
+    def _get_topic_id(self) -> str:
+        """Получить ID темы тикета из конфига"""
+        return BotConfig.AUTO_TICKET_TOPIC_ID()
+    
+    def can_send_ticket(self) -> bool:
+        """
+        Проверить, можно ли отправить тикет (прошёл ли интервал)
+        
+        Returns:
+            bool: True если можно отправить, False если нужно подождать
+        """
+        if self._last_ticket_time == 0:
+            # Никогда не отправляли - можно отправить
+            logger.debug("📝 Тикеты ещё не отправлялись - можно создать")
+            return True
+        
+        interval = BotConfig.AUTO_TICKET_INTERVAL()
+        elapsed = time.time() - self._last_ticket_time
+        
+        if elapsed < interval:
+            remaining = interval - elapsed
+            last_time = datetime.fromtimestamp(self._last_ticket_time)
+            logger.info(f"⏳ Тикет нельзя отправить - интервал не прошёл")
+            logger.info(f"   Последний тикет: {last_time.strftime('%Y-%m-%d %H:%M:%S')}")
+            logger.info(f"   Осталось ждать: {remaining:.0f} сек ({remaining/60:.1f} мин)")
+            return False
+        
+        logger.debug(f"✅ Интервал прошёл ({elapsed:.0f}с) - можно создать тикет")
+        return True
+    
+    def get_time_until_next_ticket(self) -> int:
+        """
+        Получить время до следующего возможного тикета в секундах
+        
+        Returns:
+            int: Секунд до следующего тикета (0 если можно отправить сейчас)
+        """
+        if self._last_ticket_time == 0:
+            return 0
+        
+        interval = BotConfig.AUTO_TICKET_INTERVAL()
+        elapsed = time.time() - self._last_ticket_time
+        remaining = max(0, interval - elapsed)
+        
+        return int(remaining)
         
     async def send_ticket(
         self, 
@@ -44,39 +134,47 @@ class AutoTicketService:
         Отправить тикет в поддержку Starvell через API
         
         Args:
-            order_ids: Список ID заказов (UUID формат, будет сконвертирован в short ID)
+            order_ids: Список ID заказов (первый - самый старый для поля orderId)
             subject: Тема тикета
-            description: Описание (если None, будет сгенерировано автоматически)
+            description: Описание (если None, будет сгенерировано из списка)
             
         Returns:
             Tuple[success: bool, message: str]
         """
         if not order_ids:
-            return False, "Нет заказов для отправки"
+            return False, "Пустой список заказов"
         
         if not self.session_cookie:
             return False, "Отсутствует session_cookie"
         
-        # Берем первый заказ для формы (можно отправить только 1 заказ за раз)
-        order_id_full = order_ids[0]
+        # Первый заказ (самый старый) идёт в поле orderId
+        main_order_id = order_ids[0]
+        # Преобразуем в короткий ID (последние 8 символов без дефисов)
+        main_order_short = main_order_id.replace('-', '')[-8:].upper()
         
-        # Конвертируем UUID в short ID (#41D4CCAE формат)
-        # Берем последние 8 символов UUID без дефисов
-        order_id_short = order_id_full.replace("-", "")[-8:].upper()
-        order_id_formatted = f"#{order_id_short}"
-        
-        # Формируем описание
+        # Формируем описание со списком ВСЕХ заказов
         if not description:
-            description = subject
+            order_list = " ".join([
+                f"#{order_id.replace('-', '')[-8:].upper()}"
+                for order_id in order_ids
+            ])
+            description = f"{subject}\n\n{order_list}"
         
-        # Подготавливаем данные формы (FormData, НЕ JSON!)
-        form_data = aiohttp.FormData()
-        form_data.add_field('ticketType', TICKET_TYPE_ORDER_ISSUE)
-        form_data.add_field('subject', subject)
-        form_data.add_field('description', description)
-        form_data.add_field('orderId', order_id_formatted)
-        form_data.add_field('orderUserTypeId', ORDER_USER_TYPE_SELLER)
-        form_data.add_field('orderTopicId', ORDER_TOPIC_BUYER_FORGOT_CONFIRM)
+        # Получаем настройки из конфига
+        ticket_type = self._get_ticket_type()
+        user_type_id = self._get_user_type_id()
+        topic_id = self._get_topic_id()
+        
+        form_data = aiohttp.FormData(quote_fields=False)
+        form_data.add_field('ticketType', str(ticket_type), content_type='text/plain')
+        form_data.add_field('orderId', main_order_short, content_type='text/plain')  # Короткий ID (8 символов)
+        form_data.add_field('orderUserTypeId', str(user_type_id), content_type='text/plain')
+        form_data.add_field('orderTopicId', str(topic_id), content_type='text/plain')
+        form_data.add_field('subject', subject, content_type='text/plain')
+        form_data.add_field('description', description, content_type='text/plain')
+        
+        # Создаем connector с правильными настройками
+        connector = aiohttp.TCPConnector(ssl=False)
         
         headers = {
             "Cookie": f"session={self.session_cookie}",
@@ -84,36 +182,39 @@ class AutoTicketService:
             "Origin": STARVELL_BASE_URL,
             "Referer": f"{STARVELL_BASE_URL}/support/new",
             "Accept": "*/*",
-            "Sec-Fetch-Dest": "empty",
-            "Sec-Fetch-Mode": "cors",
-            "Sec-Fetch-Site": "same-origin"
         }
         
         try:
-            async with aiohttp.ClientSession() as session:
-                logger.debug(f"Отправка тикета для заказа {order_id_full}")
-                logger.debug(f"Short ID: {order_id_formatted}")
-                logger.debug(f"Тема: {subject}")
+            async with aiohttp.ClientSession(connector=connector) as session:
+                
+                # Детальное логирование для отладки
+                logger.debug(f"   FormData поля:")
+                logger.debug(f"      ticketType: {ticket_type}")
+                logger.debug(f"      orderId: {main_order_short}")
+                logger.debug(f"      orderUserTypeId: {user_type_id}")
+                logger.debug(f"      orderTopicId: {topic_id}")
+                logger.debug(f"      subject: {subject}")
+                logger.debug(f"      description: {description[:100]}...")
                 
                 async with session.post(
                     STARVELL_SUPPORT_API,
                     data=form_data,
                     headers=headers,
-                    timeout=aiohttp.ClientTimeout(total=30)
+                    timeout=aiohttp.ClientTimeout(total=30),
+                    allow_redirects=False  # Не следуем редиректам
                 ) as response:
                     response_text = await response.text()
                     
-                    logger.debug(f"Ответ API: {response.status}")
-                    if BotConfig.DEBUG():
-                        logger.debug(f"Тело ответа: {response_text[:500]}")
                     
                     if response.status == 200:
-                        logger.info(f"✅ Тикет отправлен для заказа: {order_id_formatted} ({order_id_full[:16]}...)")
+                        # Обновляем время последнего тикета
+                        self._last_ticket_time = time.time()
+                        # Сохраняем в файл
+                        self._save_last_ticket_time()
                         
-                        if len(order_ids) > 1:
-                            return True, f"Тикет #{order_id_formatted} отправлен (из {len(order_ids)})"
-                        else:
-                            return True, f"Тикет {order_id_formatted} отправлен"
+                        logger.info(f"✅ Тикет с {len(order_ids)} заказами создан успешно")
+                        
+                        return True, f"Тикет создан ({len(order_ids)} заказов)"
                     elif response.status == 401:
                         logger.error(f"❌ Ошибка авторизации (401) - проверьте session_cookie")
                         return False, "Ошибка авторизации (истекла сессия)"
@@ -121,6 +222,10 @@ class AutoTicketService:
                         logger.error(f"❌ Неверные данные (400)")
                         logger.error(f"Ответ: {response_text[:300]}")
                         return False, "Неверные данные запроса"
+                    elif response.status == 429:
+                        logger.error(f"❌ Rate limit (429) - слишком много запросов")
+                        logger.error(f"Ответ: {response_text[:300]}")
+                        return False, "Слишком много запросов (rate limit)"
                     else:
                         logger.error(f"❌ Ошибка отправки тикета: {response.status}")
                         logger.error(f"Ответ: {response_text[:300]}")
@@ -138,44 +243,40 @@ class AutoTicketService:
         Получить список неподтверждённых заказов старше X часов
         
         Args:
-            starvell_service: Сервис Starvell для API запросов
+            starvell_service: Сервис Starvell для API запросов (StarAPI)
             hours: Количество часов с момента создания заказа
             
         Returns:
             Список заказов с ID и временем создания
         """
         try:
-            # Получаем заказы через API
-            orders_data = await starvell_service.get_orders()
+            orders_data = await starvell_service.get_all_orders(status="CREATED")
             
             if not orders_data:
                 logger.debug("Нет заказов от API")
                 return []
             
+            
             unconfirmed = []
             current_time = datetime.now()
+            
+            # Счётчики для статистики
+            stats = {
+                "total": len(orders_data),
+                "too_young": 0,
+                "qualified": 0
+            }
             
             for order in orders_data:
                 # ID заказа
                 order_id = order.get("id")
                 if not order_id:
                     continue
-                
-                # Проверяем статус заказа
-                # Статусы Starvell: CREATED, PAID, CONFIRMED, REFUND, CANCELLED
-                # Неподтвержденные = CREATED (оплачен, но покупатель не подтвердил получение)
-                status = order.get("status", "")
-                
-                # Нам нужны заказы в статусе CREATED (awaiting confirmation)
-                if status != "CREATED":
-                    continue
-                
-                # Проверяем дату создания заказа
+
                 created_at = order.get("createdAt")
                 order_dt = None
                 
                 if isinstance(created_at, str):
-                    # ISO string формат: "2026-02-03T14:25:48.953Z"
                     try:
                         # Убираем Z и парсим
                         created_at_clean = created_at.replace('Z', '+00:00')
@@ -183,6 +284,7 @@ class AutoTicketService:
                         # Конвертируем в naive datetime для сравнения
                         if order_dt.tzinfo is not None:
                             order_dt = order_dt.replace(tzinfo=None)
+                        logger.debug(f"Заказ {order_id[:8]}... дата: {created_at} → {order_dt}")
                     except (ValueError, AttributeError) as e:
                         logger.warning(f"Ошибка парсинга даты {created_at}: {e}")
                         continue
@@ -192,6 +294,9 @@ class AutoTicketService:
                     if timestamp > 3000000000:  # Если > 2065 год, значит миллисекунды
                         timestamp = timestamp / 1000
                     order_dt = datetime.fromtimestamp(timestamp)
+                    logger.debug(f"Заказ {order_id[:8]}... timestamp: {created_at} → {order_dt}")
+                else:
+                    logger.warning(f"Заказ {order_id[:8]}... неизвестный формат даты: {type(created_at)} = {created_at}")
                 
                 if not order_dt:
                     logger.debug(f"Не удалось определить дату для заказа {order_id}")
@@ -201,24 +306,20 @@ class AutoTicketService:
                 age = current_time - order_dt
                 age_hours = age.total_seconds() / 3600
                 
-                logger.debug(f"Заказ {order_id[:8]}... возраст {age_hours:.1f}ч (статус: {status})")
+                logger.debug(f"Заказ {order_id[:8]}... возраст {age_hours:.1f}ч (статус: CREATED)")
                 
                 # Если заказ старше указанного времени
                 if age_hours >= hours:
+                    stats["qualified"] += 1
                     unconfirmed.append({
                         "id": order_id,
                         "createdAt": created_at,
                         "age_hours": age_hours,
-                        "status": status
+                        "status": "CREATED"
                     })
+                else:
+                    stats["too_young"] += 1
             
-            if unconfirmed:
-                logger.info(f"🎫 Найдено {len(unconfirmed)} неподтверждённых заказов старше {hours}ч")
-                for o in unconfirmed[:3]:  # Показываем первые 3
-                    logger.info(f"  • {o['id'][:16]}... ({o['age_hours']:.1f}ч)")
-            else:
-                logger.debug(f"Неподтверждённых заказов старше {hours}ч не найдено")
-                
             return unconfirmed
             
         except Exception as e:

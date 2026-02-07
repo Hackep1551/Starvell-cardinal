@@ -165,10 +165,34 @@ class StarvellService:
             raise RuntimeError("API не инициализирован")
         
         try:
-            data = await self.api.get_sells()
-            return data.get("pageProps", {}).get("orders", [])
+            # Используем новый метод для получения ВСЕХ заказов
+            orders = await self.api.get_all_orders()
+            return orders if orders else []
         except Exception as e:
             # Проверяем, является ли это ошибкой NotFound (обычно устаревшая сессия)
+            from api.exceptions import NotFoundError
+            if isinstance(e, NotFoundError):
+                await self._notify_session_error()
+            raise
+    
+    async def get_all_orders(self, status: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        Получить ВСЕ заказы с опциональным фильтром по статусу
+        
+        Args:
+            status: Фильтр по статусу ("CREATED", "COMPLETED", "REFUND", "PRE_CREATED")
+                   Если None - возвращает все заказы
+        
+        Returns:
+            list: Список всех заказов
+        """
+        if not self.api:
+            raise RuntimeError("API не инициализирован")
+        
+        try:
+            orders = await self.api.get_all_orders(status=status)
+            return orders if orders else []
+        except Exception as e:
             from api.exceptions import NotFoundError
             if isinstance(e, NotFoundError):
                 await self._notify_session_error()

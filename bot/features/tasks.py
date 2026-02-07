@@ -32,6 +32,7 @@ class BackgroundTasks:
         self._seen_messages: dict[str, set[str]] = {}  # chat_id -> set of message_ids
         self._first_check_messages = True  # Флаг первой проверки после запуска
         self._first_check_orders = True  # Флаг первой проверки заказов после запуска
+        self._auto_ticket_first_run_done = False  # Флаг первого запуска авто-тикетов
         
     def start(self):
         """Запустить фоновые задачи"""
@@ -64,6 +65,17 @@ class BackgroundTasks:
 
         # Авто-тикеты
         if BotConfig.AUTO_TICKET_ENABLED():
+            # Запускаем первую проверку через 10 секунд после старта
+            # (даём время на инициализацию и авторизацию)
+            import datetime as dt
+            first_run_time = dt.datetime.now() + dt.timedelta(seconds=10)
+            self.scheduler.add_job(
+                self._check_auto_ticket_with_init,
+                'date',
+                run_date=first_run_time,
+                id='auto_ticket_init',
+            )
+            # Затем запускаем по таймеру
             self.scheduler.add_job(
                 self._check_auto_ticket_loop,
                 'interval',
@@ -469,6 +481,16 @@ class BackgroundTasks:
             self.scheduler.remove_job('auto_bump')
             logger.info("Авто-bump выключен")
 
+    async def _check_auto_ticket_with_init(self):
+        """Первая проверка авто-тикетов при запуске бота"""
+        if self._auto_ticket_first_run_done:
+            return
+        
+        self._auto_ticket_first_run_done = True
+        logger.info("🎫 Запускаю первую проверку авто-тикетов при старте бота...")
+        
+        await self._check_auto_ticket_loop()
+
     async def _check_auto_ticket_loop(self):
         """Проверка авто-тикетов"""
         if not BotConfig.AUTO_TICKET_ENABLED():
@@ -488,70 +510,61 @@ class BackgroundTasks:
                 logger.debug("Неподтверждённых заказов не найдено")
                 return
                 
-            logger.info(f"📋 Найдено {len(unconfirmed)} заказов для авто-тикета")
+            # Убрали лог: 📋 Найдено {len(unconfirmed)} заказов для авто-тикета
             
-            # Отправляем тикет для каждого заказа отдельно
-            # (API Starvell поддерживает только 1 заказ на тикет)
+            # Берём заказы с учётом максимального количества
             max_orders = min(BotConfig.AUTO_TICKET_MAX_ORDERS(), len(unconfirmed))
+            orders_to_process = unconfirmed[:max_orders]
             
-            success_count = 0
-            error_count = 0
+            # Собираем список ID заказов
+            order_ids = [order.get('id') for order in orders_to_process if order.get('id')]
             
-            for i, order in enumerate(unconfirmed[:max_orders]):
-                order_id = order.get('id')
-                if not order_id:
-                    continue
-                
-                # Отправляем тикет
-                success, msg = await autoticket.send_ticket([order_id])
-                
+            if not order_ids:
+                logger.warning("Не удалось извлечь ID заказов")
+                return
+            
+            # Проверяем, можно ли отправить тикет (прошёл ли интервал)
+            if not autoticket.can_send_ticket():
+                remaining = autoticket.get_time_until_next_ticket()
+                logger.info(f"⏳ Тикет не отправлен - интервал не прошёл (осталось {remaining}с)")
+                return
+            
+            # Отправляем ОДИН тикет со ВСЕМИ заказами
+            # Первый заказ (самый старый) идёт в поле orderId, остальные в описание
+            # Убрали лог: 📨 Создаю тикет с {len(order_ids)} заказами...
+            success, msg = await autoticket.send_ticket(order_ids)
+            
+            # Уведомляем админов о результате (если включено)
+            if BotConfig.NOTIFY_AUTO_TICKET() and self.notifier:
                 if success:
-                    success_count += 1
-                else:
-                    error_count += 1
-                
-                # Уведомляем админов о каждом тикете (если включено)
-                if BotConfig.NOTIFY_AUTO_TICKET():
-                    if success:
-                        text = (
-                            f"🎫 <b>Авто-тикет отправлен</b>\n\n"
-                            f"📦 Заказ: <code>{order_id}</code>\n"
-                            f"⏰ Возраст: {order.get('age_hours', 0):.1f}ч\n"
-                            f"✅ {msg}"
-                        )
-                        force_notif = False
-                    else:
-                        text = (
-                            f"❌ <b>Ошибка авто-тикета</b>\n\n"
-                            f"📦 Заказ: <code>{order_id}</code>\n"
-                            f"⏰ Возраст: {order.get('age_hours', 0):.1f}ч\n"
-                            f"❗ {msg}"
-                        )
-                        force_notif = True
-                        
+                    # Формируем список заказов для уведомления (ID в строчку через пробел)
+                    orders_list = " ".join([
+                        f"#{order.get('id', 'N/A').replace('-', '')[-8:].upper()}"
+                        for order in orders_to_process
+                    ])
+                    
+                    text = (
+                        f"🎫 <b>Покупатель забыл подтвердить заказ</b>\n\n"
+                        f"Список заказов: {orders_list}\n"
+                        f"Всего заказов: {len(order_ids)}"
+                    )
                     await self.notifier.notify_all_admins(
                         "auto_ticket",
                         text,
-                        force=force_notif
+                        force=False
                     )
-                
-                # Пауза между отправками тикетов (10 секунд)
-                if i < max_orders - 1:
-                    await asyncio.sleep(10)
-            
-            # Итоговое уведомление
-            if success_count > 0 or error_count > 0:
-                summary = (
-                    f"📊 <b>Итог авто-тикетов</b>\n\n"
-                    f"✅ Отправлено: {success_count}\n"
-                    f"❌ Ошибок: {error_count}\n"
-                    f"📋 Всего обработано: {success_count + error_count}"
-                )
-                await self.notifier.notify_all_admins(
-                    "auto_ticket",
-                    summary,
-                    force=False
-                )
+                else:
+                    text = (
+                        f"❌ <b>Ошибка создания авто-тикета</b>\n\n"
+                        f"� Заказов: {len(order_ids)}\n"
+                        f"❗ {msg}"
+                    )
+                    await self.notifier.notify_all_admins(
+                        "auto_ticket",
+                        text,
+                        force=True
+                    )
             
         except Exception as e:
             logger.error(f"❌ Ошибка в цикле авто-тикетов: {e}", exc_info=True)
+
