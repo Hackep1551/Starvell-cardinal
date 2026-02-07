@@ -305,7 +305,11 @@ def run_setup():
         'autoRaise': '0',
         'autoDelivery': '0',
         'autoRestore': '0',
-        'locale': 'ru'
+        'locale': 'ru',
+        'autoTicket': '0',
+        'autoTicketInterval': '3600',
+        'autoTicketMaxOrders': '5',
+        'autoTicketOrderAge': '48'
     }
     
     
@@ -321,7 +325,8 @@ def run_setup():
         'lotRestore': '1',
         'botStart': '1',
         'lotDeactivate': '1',
-        'lotBump': '1'
+        'lotBump': '1',
+        'autoTicket': '1'
     }
     
     config['AutoRaise'] = {
@@ -352,6 +357,12 @@ def run_setup():
     config['Other'] = {
         'debug': '0',
         'watermark': '🤖'
+    }
+    
+    config['AutoTicket'] = {
+        'ticketType': '1',
+        'orderUserTypeId': '2',
+        'orderTopicId': '501'
     }
     
     # Сохраняем конфигурацию

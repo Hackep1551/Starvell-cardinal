@@ -142,7 +142,7 @@ async def main():
         await auto_response.start()
         
         # Запускаем хэндлеры инициализации плагинов
-        plugin_manager.run_handlers(plugin_manager.init_handlers, bot, starvell, db, plugin_manager)
+        await plugin_manager.run_handlers(plugin_manager.init_handlers, bot, starvell, db, plugin_manager)
         
         # Проверяем авторизацию
         user_info = await starvell.get_user_info()
@@ -233,7 +233,7 @@ async def main():
             log_event("bot_started", f"user={user.get('username')} id={user.get('id')} time={current_time}")
     
     # Запускаем хэндлеры старта плагинов
-    plugin_manager.run_handlers(plugin_manager.start_handlers, bot, starvell, db, plugin_manager)
+    await plugin_manager.run_handlers(plugin_manager.start_handlers, bot, starvell, db, plugin_manager)
     
     try:
         # Запускаем polling
@@ -243,7 +243,7 @@ async def main():
         logger.info("Остановка бота...")
         
         # Запускаем хэндлеры остановки плагинов
-        plugin_manager.run_handlers(plugin_manager.stop_handlers, bot, starvell, db, plugin_manager)
+        await plugin_manager.run_handlers(plugin_manager.stop_handlers, bot, starvell, db, plugin_manager)
         
         tasks.stop()
         await keep_alive.stop()

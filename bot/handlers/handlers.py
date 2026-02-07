@@ -69,6 +69,12 @@ class SessionState(StatesGroup):
     waiting_for_cookie = State()
 
 
+class AutoTicketState(StatesGroup):
+    """Состояния для настройки авто-тикетов"""
+    waiting_for_interval = State()
+    waiting_for_max_orders = State()
+
+
 # === Функции авторизации ===
 
 def hash_password(password: str) -> str:
@@ -1061,71 +1067,90 @@ async def callback_switch_auto_ticket_notify(callback: CallbackQuery):
 
 
 @router.callback_query(F.data == CBT.AUTO_TICKET_SET_INTERVAL)
-async def callback_auto_ticket_set_interval(callback: CallbackQuery):
-    """Циклическое переключение интервала"""
-    current = BotConfig.AUTO_TICKET_INTERVAL()
-    # 30 мин -> 1 ч -> 3 ч -> 6 ч -> 12 ч -> 24 ч -> 30 мин
-    intervals = [1800, 3600, 10800, 21600, 43200, 86400]
+async def callback_auto_ticket_set_interval(callback: CallbackQuery, state: FSMContext):
+    """Запросить интервал проверки вручную"""
+    await state.set_state(AutoTicketState.waiting_for_interval)
+    await callback.message.answer(
+        "⏱️ Введите интервал проверки в минутах (30-1440):\n\n"
+        "Например: <code>60</code> (1 час)\n"
+        "Отправьте /cancel для отмены",
+    )
+    await callback.answer()
+
+
+@router.message(AutoTicketState.waiting_for_interval)
+async def process_auto_ticket_interval(message: Message, state: FSMContext):
+    """Обработать ввод интервала"""
+    if message.text == "/cancel":
+        await state.clear()
+        await message.answer("❌ Отменено")
+        return
     
     try:
-        next_idx = (intervals.index(current) + 1) % len(intervals)
-        new_val = intervals[next_idx]
-    except ValueError:
-        new_val = 3600
+        interval_minutes = int(message.text.strip())
         
-    BotConfig.update(**{"auto_ticket.interval": new_val})
-    await callback.answer(f"Интервал установлен: {new_val // 60} мин")
-    
-    # Обновляем меню
-    enabled = BotConfig.AUTO_TICKET_ENABLED()
-    max_orders = BotConfig.AUTO_TICKET_MAX_ORDERS()
-    notify = BotConfig.NOTIFY_AUTO_TICKET()
-    
-    text = (
-        "🎫 <b>Настройки авто-тикета</b>\n\n"
-        "Бот будет автоматически создавать тикеты для неподтверждённых заказов.\n"
-        "Для работы требуется, чтобы бот был авторизован.\n\n"
-        f"Статус: <b>{'Включено ✅' if enabled else 'Выключено ❌'}</b>"
-    )
-    
-    await callback.message.edit_text(
-        text,
-        reply_markup=get_auto_ticket_settings_menu(enabled, new_val, max_orders, notify)
-    )
+        if interval_minutes < 30 or interval_minutes > 1440:
+            await message.answer(
+                "❌ Интервал должен быть от 30 до 1440 минут (24 часа)\n"
+                "Попробуйте ещё раз или отправьте /cancel"
+            )
+            return
+        
+        interval_seconds = interval_minutes * 60
+        BotConfig.update(**{"auto_ticket.interval": interval_seconds})
+        await state.clear()
+        
+        await message.answer(
+            f"✅ Интервал установлен: {interval_minutes} мин ({interval_seconds} сек)"
+        )
+        
+    except ValueError:
+        await message.answer(
+            "❌ Неверный формат. Введите число от 30 до 1440\n"
+            "Отправьте /cancel для отмены"
+        )
 
 
 @router.callback_query(F.data == CBT.AUTO_TICKET_SET_MAX)
-async def callback_auto_ticket_set_max(callback: CallbackQuery):
-    """Циклическое переключение макс. заказов"""
-    current = BotConfig.AUTO_TICKET_MAX_ORDERS()
-    # 1 -> 3 -> 5 -> 10 -> 20 -> 1
-    values = [1, 3, 5, 10, 20]
+async def callback_auto_ticket_set_max(callback: CallbackQuery, state: FSMContext):
+    """Запросить макс. заказов вручную"""
+    await state.set_state(AutoTicketState.waiting_for_max_orders)
+    await callback.message.answer(
+        "🔢 Введите максимальное количество заказов для обработки за раз (1-50):\n\n"
+        "Например: <code>5</code>\n"
+        "Отправьте /cancel для отмены",
+    )
+    await callback.answer()
+
+
+@router.message(AutoTicketState.waiting_for_max_orders)
+async def process_auto_ticket_max_orders(message: Message, state: FSMContext):
+    """Обработать ввод макс. заказов"""
+    if message.text == "/cancel":
+        await state.clear()
+        await message.answer("❌ Отменено")
+        return
     
     try:
-        next_idx = (values.index(current) + 1) % len(values)
-        new_val = values[next_idx]
-    except ValueError:
-        new_val = 5
+        max_orders = int(message.text.strip())
         
-    BotConfig.update(**{"auto_ticket.max_orders": new_val})
-    await callback.answer(f"Макс. заказов: {new_val}")
-    
-    # Обновляем меню
-    enabled = BotConfig.AUTO_TICKET_ENABLED()
-    interval = BotConfig.AUTO_TICKET_INTERVAL()
-    notify = BotConfig.NOTIFY_AUTO_TICKET()
-    
-    text = (
-        "🎫 <b>Настройки авто-тикета</b>\n\n"
-        "Бот будет автоматически создавать тикеты для неподтверждённых заказов.\n"
-        "Для работы требуется, чтобы бот был авторизован.\n\n"
-        f"Статус: <b>{'Включено ✅' if enabled else 'Выключено ❌'}</b>"
-    )
-    
-    await callback.message.edit_text(
-        text,
-        reply_markup=get_auto_ticket_settings_menu(enabled, interval, new_val, notify)
-    )
+        if max_orders < 1 or max_orders > 50:
+            await message.answer(
+                "❌ Количество должно быть от 1 до 50\n"
+                "Попробуйте ещё раз или отправьте /cancel"
+            )
+            return
+        
+        BotConfig.update(**{"auto_ticket.max_orders": max_orders})
+        await state.clear()
+        
+        await message.answer(f"✅ Макс. заказов установлено: {max_orders}")
+        
+    except ValueError:
+        await message.answer(
+            "❌ Неверный формат. Введите число от 1 до 50\n"
+            "Отправьте /cancel для отмены"
+        )
 
 
 @router.callback_query(F.data == CBT.SWITCH_AUTO_INSTALL)

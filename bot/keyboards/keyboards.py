@@ -209,7 +209,7 @@ def get_main_menu_page_2(update_available: bool = False) -> InlineKeyboardMarkup
         ],
         [
             InlineKeyboardButton(
-                text="⚙️ Авто-тикеты (Временно отключено)",
+                text="⚙️ Авто-тикеты",
                 callback_data=CBT.AUTO_TICKET_SETTINGS
             ),
         ],

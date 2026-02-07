@@ -91,24 +91,6 @@ def edit_plugin(plugin_data, CBT, uuid: str, offset: int, ask_delete: bool = Fal
             )
         ])
         
-        # Если есть команды
-        if plugin_data.commands:
-            keyboard.append([
-                InlineKeyboardButton(
-                    text="⚙️ Команды плагина",
-                    callback_data=f"{CBT.PLUGIN_COMMANDS}:{uuid}:{offset}"
-                )
-            ])
-        
-        # Если есть страница настроек
-        if plugin_data.has_settings:
-            keyboard.append([
-                InlineKeyboardButton(
-                    text="⚙️ Настройки",
-                    callback_data=f"{CBT.PLUGIN_SETTINGS}:{uuid}:{offset}"
-                )
-            ])
-        
         keyboard.append([
             InlineKeyboardButton(
                 text="🗑️ Удалить плагин",
@@ -118,7 +100,7 @@ def edit_plugin(plugin_data, CBT, uuid: str, offset: int, ask_delete: bool = Fal
     
     keyboard.append([
         InlineKeyboardButton(
-            text="? �����",
+            text="🔙 Назад",
             callback_data=f"{CBT.PLUGINS_LIST}:{offset}"
         )
     ])
@@ -140,7 +122,7 @@ def plugin_commands(plugin_data, CBT, uuid: str, offset: int) -> InlineKeyboardM
     
     keyboard.append([
         InlineKeyboardButton(
-            text="? �����",
+            text="🔙 Назад",
             callback_data=f"{CBT.EDIT_PLUGIN}:{uuid}:{offset}"
         )
     ])

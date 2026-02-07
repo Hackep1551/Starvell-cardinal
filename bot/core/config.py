@@ -53,7 +53,11 @@ class ConfigManager:
             'autoRaise': 'false',
             'autoDelivery': 'false',
             'autoRestore': 'false',
-            'locale': 'ru'
+            'locale': 'ru',
+            'autoTicket': 'false',
+            'autoTicketInterval': '3600',
+            'autoTicketMaxOrders': '5',
+            'autoTicketOrderAge': '48'
         }
         
         self._config['Telegram'] = {
@@ -72,7 +76,8 @@ class ConfigManager:
             'botStart': 'false',
             'botStop': 'false',
             'lotDeactivate': 'false',
-            'lotBump': 'false'
+            'lotBump': 'false',
+            'autoTicket': 'true'
         }
         
         self._config['AutoResponse'] = {
@@ -113,6 +118,12 @@ class ConfigManager:
             'useWatermark': 'true'
         }
         
+        self._config['AutoTicket'] = {
+            'ticketType': '1',
+            'orderUserTypeId': '2',
+            'orderTopicId': '501'
+        }
+        
         self.save()
 
     def _get_default_template(self) -> Dict[str, Dict[str, str]]:
@@ -127,7 +138,11 @@ class ConfigManager:
                 'autoRaise': 'false',
                 'autoDelivery': 'false',
                 'autoRestore': 'false',
-                'locale': 'ru'
+                'locale': 'ru',
+                'autoTicket': 'false',
+                'autoTicketInterval': '3600',
+                'autoTicketMaxOrders': '5',
+                'autoTicketOrderAge': '48'
             },
             'Telegram': {
                 'enabled': 'true',
@@ -144,7 +159,8 @@ class ConfigManager:
                 'botStart': 'false',
                 'botStop': 'false',
                 'lotDeactivate': 'false',
-                'lotBump': 'false'
+                'lotBump': 'false',
+                'autoTicket': 'true'
             },
             'AutoResponse': {
                 'orderConfirm': 'false',
@@ -175,6 +191,11 @@ class ConfigManager:
                 'debug': 'false',
                 'watermark': '🤖',
                 'useWatermark': 'true'
+            },
+            'AutoTicket': {
+                'ticketType': '1',
+                'orderUserTypeId': '2',
+                'orderTopicId': '501'
             }
         }
 
@@ -185,11 +206,13 @@ class ConfigManager:
         дефолтными значениями.
         """
         default = self._get_default_template()
+        changes_made = False
 
         # Удаляем лишние секции (те, которые не описаны в шаблоне)
         for section in list(self._config.sections()):
             if section not in default:
                 del self._config[section]
+                changes_made = True
 
         for section, keys in default.items():
             if not self._config.has_section(section):
@@ -197,6 +220,7 @@ class ConfigManager:
                 self._config.add_section(section)
                 for key, val in keys.items():
                     self._config.set(section, key, val)
+                changes_made = True
                 continue
 
             # Если секция есть - удаляем ключи, не описанные в шаблоне
@@ -206,14 +230,20 @@ class ConfigManager:
             for key in list(self._config[section].keys()):
                 if key.lower() not in allowed:
                     self._config.remove_option(section, key)
+                    changes_made = True
    
             # Добавляем отсутствующие ключи (не перезаписываем существующие)
             for key, val in keys.items():
                 if not self._config.has_option(section, key):
                     self._config.set(section, key, val)
+                    changes_made = True
 
-        # Сохраняем изменения
-        self.save()
+        # Сохраняем изменения ТОЛЬКО если что-то изменилось
+        if changes_made:
+            self.save()
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info("🔧 Конфигурация синхронизирована с новой версией")
         
     def save(self):
         """Сохранить конфигурацию"""
@@ -468,6 +498,21 @@ class BotConfig:
     def AUTO_TICKET_ORDER_AGE() -> int:
         """Минимальный возраст заказа для авто-тикета (часы)"""
         return _config_manager.get('Starvell', 'autoTicketOrderAge', 48)
+    
+    @staticmethod
+    def AUTO_TICKET_TYPE() -> str:
+        """Тип тикета (из секции AutoTicket)"""
+        return _config_manager.get('AutoTicket', 'ticketType', '1')
+    
+    @staticmethod
+    def AUTO_TICKET_USER_TYPE_ID() -> str:
+        """ID типа пользователя (из секции AutoTicket)"""
+        return _config_manager.get('AutoTicket', 'orderUserTypeId', '2')
+    
+    @staticmethod
+    def AUTO_TICKET_TOPIC_ID() -> str:
+        """ID темы тикета (из секции AutoTicket)"""
+        return _config_manager.get('AutoTicket', 'orderTopicId', '501')
     
     # === Автоответы ===
     @staticmethod
