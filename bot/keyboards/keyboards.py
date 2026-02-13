@@ -269,8 +269,6 @@ def get_global_switches_menu(
                 text=switch_text("Авто-поднятие", auto_bump),
                 callback_data=CBT.SWITCH_AUTO_BUMP
             ),
-        ],
-        [
             InlineKeyboardButton(
                 text=switch_text("Авто-выдача", auto_delivery),
                 callback_data=CBT.SWITCH_AUTO_DELIVERY
@@ -278,13 +276,11 @@ def get_global_switches_menu(
         ],
         [
             InlineKeyboardButton(
-                text=switch_text("Авто-восстановление лотов", auto_restore),
+                text=switch_text("Авто-восстановление", auto_restore),
                 callback_data=CBT.SWITCH_AUTO_RESTORE
             ),
-        ],
-        [
             InlineKeyboardButton(
-                text=switch_text("Авто-прочтение чатов", auto_read),
+                text=switch_text("Авто-прочтение", auto_read),
                 callback_data=CBT.SWITCH_AUTO_READ
             ),
         ],
