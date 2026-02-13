@@ -288,30 +288,53 @@ class StarAPI:
     
     async def get_all_orders(self, status: Optional[str] = None) -> List[Dict[str, Any]]:
         """
-        Получить ВСЕ заказы через POST /api/orders/list (до 150+ заказов)
+        Получить ВСЕ заказы с информацией о покупателях
+        
+        Использует гибридный подход
         
         Args:
             status: Фильтр по статусу ("CREATED", "COMPLETED", "REFUND", "PRE_CREATED")
                    Если None - возвращает все заказы
         
         Returns:
-            list: Список всех заказов
+            list: Список всех заказов с информацией о покупателях
         """
-        # Формируем payload для API
         payload = {"filter": {}}
-        
         if status:
             payload["filter"]["status"] = status
         
-        # POST запрос к /api/orders/list
-        data = await self.session.post_json(
+        all_orders = await self.session.post_json(
             f"{self.config.API_URL}/orders/list",
             data=payload,
             referer=f"{self.config.BASE_URL}/account/sells",
         )
         
-        # API возвращает список заказов напрямую
-        return data if isinstance(data, list) else []
+        if not isinstance(all_orders, list):
+            all_orders = []
+        
+        try:
+            data = await self._get_next_data("account/sells.json")
+            page_props = data.get("pageProps", {})
+            recent_orders = page_props.get("orders", [])
+            
+            user_map = {}
+            for order in recent_orders:
+                order_id = order.get("id")
+                user = order.get("user")
+                if order_id and user:
+                    user_map[order_id] = user
+            
+            for order in all_orders:
+                order_id = order.get("id")
+                if order_id in user_map:
+                    order["user"] = user_map[order_id]
+        
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.debug(f"Не удалось обогатить заказы данными пользователей: {e}")
+        
+        return all_orders
         
     async def refund_order(self, order_id: str) -> Dict[str, Any]:
         """

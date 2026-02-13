@@ -278,21 +278,28 @@ class BackgroundTasks:
                 # Debug: логируем все поля цены
                 logger.debug(f"Поля цены в заказе {order_id[:8]}: totalPrice={order.get('totalPrice')}, basePrice={order.get('basePrice')} (конвертировано: {amount} ₽)")
                 
-                # Получаем данные покупателя (поле "user" согласно API)
-                buyer = order.get("user") or order.get("buyer") or {}
+                # Получаем данные покупателя
+                buyer = order.get("user") or {}
+                buyer_id = order.get("buyerId")
                 buyer_name = "Неизвестно"
                 
                 if isinstance(buyer, dict):
-                    # Приоритет: username -> nickname -> name -> id
+                    # Извлекаем имя из user объекта
                     buyer_name = (
                         buyer.get("username") or 
                         buyer.get("nickname") or 
                         buyer.get("name") or 
                         buyer.get("displayName") or
-                        str(buyer.get("id", "Неизвестно"))
+                        f"ID{buyer.get('id', buyer_id)}"
                     )
-                elif isinstance(buyer, str):
-                    buyer_name = buyer
+                elif buyer_id:
+                    # Fallback: если user отсутствует, используем buyerId
+                    buyer_name = f"ID{buyer_id}"
+                    # Создаём минимальный user объект для плагинов
+                    order["user"] = {
+                        "id": buyer_id,
+                        "username": buyer_name
+                    }
                 
                 # Получаем данные лота (в Starvell API это offerDetails)
                 lot = order.get("offerDetails") or order.get("listing") or order.get("lot") or order.get("offer") or {}

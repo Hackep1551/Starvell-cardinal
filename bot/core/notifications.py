@@ -412,12 +412,19 @@ class NotificationManager:
         # Создаём кнопки
         buttons = []
         
-        # Получаем chat_id покупателя из order_data если есть
+        # Получаем chat_id покупателя из order_data
         chat_id = None
-        if order_data and "buyer" in order_data:
-            buyer_data = order_data["buyer"]
-            if isinstance(buyer_data, dict):
-                chat_id = buyer_data.get("id")
+        if order_data:
+            # Пробуем извлечь из buyerId
+            buyer_id = order_data.get("buyerId")
+            if buyer_id:
+                chat_id = str(buyer_id)
+            else:
+                buyer_data = order_data.get("user") or order_data.get("buyer")
+                if isinstance(buyer_data, dict):
+                    chat_id = buyer_data.get("id")
+                    if chat_id:
+                        chat_id = str(chat_id)
         
         # Проверяем количество быстрых ответов
         template_manager = get_template_manager()
@@ -610,6 +617,8 @@ class NotificationManager:
         
         # Получаем имя покупателя и chat_id
         buyer = order_data.get("user") or order_data.get("buyer") or {}
+        buyer_id = order_data.get("buyerId")  # Числовой ID покупателя
+        
         if isinstance(buyer, dict):
             plugin_order_data['buyer'] = (
                 buyer.get("username") or 
@@ -618,12 +627,14 @@ class NotificationManager:
                 buyer.get("displayName") or
                 str(buyer.get("id", "Unknown"))
             )
-            # Извлекаем chat_id (ID покупателя в Starvell)
-            buyer_id = buyer.get("id")
-            if buyer_id:
-                plugin_order_data['chat_id'] = str(buyer_id)
+            user_id = buyer.get("id")
+            if user_id:
+                plugin_order_data['chat_id'] = str(user_id)
         elif isinstance(buyer, str):
             plugin_order_data['buyer'] = buyer
+        
+        if not plugin_order_data['chat_id'] and buyer_id:
+            plugin_order_data['chat_id'] = str(buyer_id)
         
         # Получаем цену (конвертируем из копеек)
         amount_kopecks = (
