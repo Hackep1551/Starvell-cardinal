@@ -92,6 +92,7 @@ class SessionManager:
         method: str,
         url: str,
         json_data: Any = None,
+        form_data: Any = None,
         referer: str = None,
         headers: Dict[str, str] = None,
         include_sid: bool = False,
@@ -102,6 +103,8 @@ class SessionManager:
         Общая логика HTTP запроса: throttle, статус-коды, retry.
 
         Args:
+            json_data: Тело запроса как JSON
+            form_data: Тело запроса как multipart/form-data (aiohttp.FormData)
             retry: Повторять ли запрос при сетевых ошибках.
                    Для мутирующих POST (отправка сообщения, рефанд) должно
                    быть False — таймаут не значит, что сервер не принял запрос,
@@ -126,6 +129,7 @@ class SessionManager:
                     headers=request_headers,
                     cookies=cookies,
                     json=json_data,
+                    data=form_data,
                 ) as resp:
                     # Для ошибок читаем тело ответа (там бывает message от API)
                     error_message = ""
@@ -227,6 +231,30 @@ class SessionManager:
         return await self._request(
             "POST", url,
             json_data=data,
+            referer=referer,
+            headers=headers,
+            include_sid=include_sid,
+            retry=retry,
+        )
+
+    async def post_form(
+        self,
+        url: str,
+        form_data: Any,
+        referer: str = None,
+        headers: Dict[str, str] = None,
+        include_sid: bool = False,
+        retry: bool = False,
+    ) -> Any:
+        """
+        POST запрос с телом multipart/form-data.
+
+        content-type не выставляем вручную — aiohttp сам проставит boundary.
+        По умолчанию без retry (мутирующий запрос).
+        """
+        return await self._request(
+            "POST", url,
+            form_data=form_data,
             referer=referer,
             headers=headers,
             include_sid=include_sid,

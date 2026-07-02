@@ -382,10 +382,10 @@ class StarAPI:
     async def get_order_details(self, order_id: str) -> Dict[str, Any]:
         """
         Получить детальную информацию о заказе
-        
+
         Args:
             order_id: ID заказа (например, 019b95a8-df7d-683c-17a9-3889985947d6)
-            
+
         Returns:
             dict: Полные данные заказа включая chat_id, buyer, lot и т.д.
         """
@@ -393,6 +393,28 @@ class StarAPI:
             f"order/{order_id}.json",
             params=f"?order_id={order_id}",
             include_sid=True,
+        )
+
+    async def create_support_ticket(self, fields: Dict[str, str]) -> Dict[str, Any]:
+        """
+        Создать тикет в поддержку (multipart/form-data)
+
+        Args:
+            fields: Поля формы тикета (ticketType, orderId, subject и т.д.)
+
+        Returns:
+            dict: Ответ API
+        """
+        import aiohttp
+
+        form = aiohttp.FormData(quote_fields=False)
+        for key, value in fields.items():
+            form.add_field(key, str(value), content_type='text/plain')
+
+        return await self.session.post_form(
+            f"{self.config.API_URL}/support/create",
+            form_data=form,
+            referer=f"{self.config.BASE_URL}/support/new",
         )
         
     # ==================== Офферы ====================

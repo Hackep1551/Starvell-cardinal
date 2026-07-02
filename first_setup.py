@@ -304,11 +304,11 @@ def run_setup():
     config['Starvell'] = {
         'session_cookie': session,
         'user_agent': user_agent,
-        'autoRaise': '0',
-        'autoDelivery': '0',
-        'autoRestore': '0',
+        'autoRaise': 'false',
+        'autoDelivery': 'false',
+        'autoRestore': 'false',
         'locale': 'ru',
-        'autoTicket': '0',
+        'autoTicket': 'false',
         'autoTicketInterval': '3600',
         'autoTicketMaxOrders': '5',
         'autoTicketOrderAge': '48'
@@ -335,7 +335,7 @@ def run_setup():
         ]
     )
 
-    proxy_cfg = {'enabled': '0', 'type': 'socks5', 'ip': '', 'port': '', 'login': '', 'password': ''}
+    proxy_cfg = {'enabled': 'false', 'type': 'socks5', 'ip': '', 'port': '', 'login': '', 'password': ''}
     proxy_pattern = re.compile(
         r'^(socks5|socks4|http)://(?:([^:@]+):([^@]*)@)?([\w\d\.\-]+):(\d{1,5})$',
         re.IGNORECASE
@@ -373,7 +373,7 @@ def run_setup():
             print(f" {Fore.GREEN}✓ Доступен!{Style.RESET_ALL}")
             print_success(f"Прокси принят: {p_type}://{p_ip}:{p_port}\n")
             proxy_cfg = {
-                'enabled': '1',
+                'enabled': 'true',
                 'type': p_type,
                 'ip': p_ip,
                 'port': p_port,
@@ -399,13 +399,13 @@ def run_setup():
     # Дополнительные настройки (по умолчанию)
     config['Notifications'] = {
         'checkInterval': '30',
-        'newMessages': '1',
-        'newOrders': '1',
-        'lotRestore': '1',
-        'botStart': '1',
-        'lotDeactivate': '1',
-        'lotBump': '1',
-        'autoTicket': '1'
+        'newMessages': 'true',
+        'newOrders': 'true',
+        'lotRestore': 'true',
+        'botStart': 'true',
+        'lotDeactivate': 'true',
+        'lotBump': 'true',
+        'autoTicket': 'true'
     }
     
     config['AutoRaise'] = {
@@ -415,11 +415,11 @@ def run_setup():
     }
     
     config['AutoUpdate'] = {
-        'enabled': '1'
+        'enabled': 'true'
     }
-    
+
     config['KeepAlive'] = {
-        'enabled': '1'
+        'enabled': 'true'
     }
     
     config['Storage'] = {
@@ -427,14 +427,14 @@ def run_setup():
     }
     
     config['Blacklist'] = {
-        'block_delivery': '1',
-        'block_response': '1',
-        'block_msg_notifications': '1',
-        'block_order_notifications': '1'
+        'block_delivery': 'true',
+        'block_response': 'true',
+        'block_msg_notifications': 'true',
+        'block_order_notifications': 'true'
     }
-    
+
     config['Other'] = {
-        'debug': '0',
+        'debug': 'false',
         'watermark': '🤖'
     }
     
@@ -474,7 +474,7 @@ def run_setup():
     print(f"║{' ' * 70}║")
     print(f"╚{'═' * 70}╝{Style.RESET_ALL}\n")
     
-    proxy_summary = f"{proxy_cfg['type']}://{proxy_cfg['ip']}:{proxy_cfg['port']}" if proxy_cfg['enabled'] == '1' else "не настроен"
+    proxy_summary = f"{proxy_cfg['type']}://{proxy_cfg['ip']}:{proxy_cfg['port']}" if proxy_cfg['enabled'] == 'true' else "не настроен"
     print_box(
         "📋 Сводка установки",
         [

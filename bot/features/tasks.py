@@ -622,7 +622,7 @@ class BackgroundTasks:
             # Отправляем ОДИН тикет со ВСЕМИ заказами
             # Первый заказ (самый старый) идёт в поле orderId, остальные в описание
             # Убрали лог: 📨 Создаю тикет с {len(order_ids)} заказами...
-            success, msg = await autoticket.send_ticket(order_ids)
+            success, msg = await autoticket.send_ticket(self.starvell, order_ids)
             
             # Уведомляем админов о результате (если включено)
             if BotConfig.NOTIFY_AUTO_TICKET() and self.notifier:

@@ -119,6 +119,7 @@ class CBT:
     PROXY_ADD = "proxy_add"
     PROXY_DISABLE = "proxy_disable"
     PROXY_ENABLE = "proxy_enable"
+    PROXY_RESTART = "proxy_restart"
 
 
 def bool_to_emoji(value: bool) -> str:
@@ -1283,6 +1284,10 @@ def get_proxy_menu(enabled: bool, proxy_set: bool, proxy_type: str = 'socks5', i
         toggle_cb = CBT.PROXY_DISABLE if enabled else CBT.PROXY_ENABLE
         keyboard.append([
             InlineKeyboardButton(text=toggle_text, callback_data=toggle_cb)
+        ])
+        # Прокси для Telegram применяется только при старте сессии бота
+        keyboard.append([
+            InlineKeyboardButton(text="🔄 Перезапустить бота (применить)", callback_data=CBT.PROXY_RESTART)
         ])
 
     keyboard.append([

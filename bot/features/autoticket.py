@@ -3,19 +3,20 @@
 """
 import logging
 from typing import List, Optional, Tuple
-import aiohttp
 from datetime import datetime
 import time
 import json
 from pathlib import Path
 
 from bot.core.config import BotConfig, get_config_manager
+from api.exceptions import (
+    StarAPIError,
+    AuthenticationError,
+    RateLimitError,
+    ForbiddenError,
+)
 
 logger = logging.getLogger(__name__)
-
-# API endpoints
-STARVELL_SUPPORT_API = "https://starvell.com/api/support/create"
-STARVELL_BASE_URL = "https://starvell.com"
 
 
 class AutoTicketService:
@@ -125,33 +126,36 @@ class AutoTicketService:
         return int(remaining)
         
     async def send_ticket(
-        self, 
+        self,
+        starvell_service,
         order_ids: List[str],
         subject: str = "Покупатель забыл подтвердить заказ",
         description: Optional[str] = None
     ) -> Tuple[bool, str]:
         """
-        Отправить тикет в поддержку Starvell через API
-        
+        Отправить тикет в поддержку Starvell через общий API-слой
+
         Args:
+            starvell_service: StarvellService (даёт доступ к StarAPI)
             order_ids: Список ID заказов (первый - самый старый для поля orderId)
             subject: Тема тикета
             description: Описание (если None, будет сгенерировано из списка)
-            
+
         Returns:
             Tuple[success: bool, message: str]
         """
         if not order_ids:
             return False, "Пустой список заказов"
-        
-        if not self.session_cookie:
-            return False, "Отсутствует session_cookie"
-        
+
+        api = getattr(starvell_service, "api", None)
+        if not api:
+            return False, "API не инициализирован"
+
         # Первый заказ (самый старый) идёт в поле orderId
         main_order_id = order_ids[0]
         # Преобразуем в короткий ID (последние 8 символов без дефисов)
         main_order_short = main_order_id.replace('-', '')[-8:].upper()
-        
+
         # Формируем описание со списком ВСЕХ заказов
         if not description:
             order_list = " ".join([
@@ -159,81 +163,40 @@ class AutoTicketService:
                 for order_id in order_ids
             ])
             description = f"{subject}\n\n{order_list}"
-        
-        # Получаем настройки из конфига
-        ticket_type = self._get_ticket_type()
-        user_type_id = self._get_user_type_id()
-        topic_id = self._get_topic_id()
-        
-        form_data = aiohttp.FormData(quote_fields=False)
-        form_data.add_field('ticketType', str(ticket_type), content_type='text/plain')
-        form_data.add_field('orderId', main_order_short, content_type='text/plain')  # Короткий ID (8 символов)
-        form_data.add_field('orderUserTypeId', str(user_type_id), content_type='text/plain')
-        form_data.add_field('orderTopicId', str(topic_id), content_type='text/plain')
-        form_data.add_field('subject', subject, content_type='text/plain')
-        form_data.add_field('description', description, content_type='text/plain')
-        
-        # Создаем connector с правильными настройками
-        connector = aiohttp.TCPConnector(ssl=False)
-        
-        headers = {
-            "Cookie": f"session={self.session_cookie}",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Origin": STARVELL_BASE_URL,
-            "Referer": f"{STARVELL_BASE_URL}/support/new",
-            "Accept": "*/*",
+
+        fields = {
+            'ticketType': self._get_ticket_type(),
+            'orderId': main_order_short,  # Короткий ID (8 символов)
+            'orderUserTypeId': self._get_user_type_id(),
+            'orderTopicId': self._get_topic_id(),
+            'subject': subject,
+            'description': description,
         }
-        
+
+        logger.debug(f"🎫 Отправка тикета: orderId={main_order_short}, заказов={len(order_ids)}")
+
         try:
-            async with aiohttp.ClientSession(connector=connector) as session:
-                
-                # Детальное логирование для отладки
-                logger.debug(f"   FormData поля:")
-                logger.debug(f"      ticketType: {ticket_type}")
-                logger.debug(f"      orderId: {main_order_short}")
-                logger.debug(f"      orderUserTypeId: {user_type_id}")
-                logger.debug(f"      orderTopicId: {topic_id}")
-                logger.debug(f"      subject: {subject}")
-                logger.debug(f"      description: {description[:100]}...")
-                
-                async with session.post(
-                    STARVELL_SUPPORT_API,
-                    data=form_data,
-                    headers=headers,
-                    timeout=aiohttp.ClientTimeout(total=30),
-                    allow_redirects=False  # Не следуем редиректам
-                ) as response:
-                    response_text = await response.text()
-                    
-                    
-                    if response.status == 200:
-                        # Обновляем время последнего тикета
-                        self._last_ticket_time = time.time()
-                        # Сохраняем в файл
-                        self._save_last_ticket_time()
-                        
-                        logger.info(f"✅ Тикет с {len(order_ids)} заказами создан успешно")
-                        
-                        return True, f"Тикет создан ({len(order_ids)} заказов)"
-                    elif response.status == 401:
-                        logger.error(f"❌ Ошибка авторизации (401) - проверьте session_cookie")
-                        return False, "Ошибка авторизации (истекла сессия)"
-                    elif response.status == 400:
-                        logger.error(f"❌ Неверные данные (400)")
-                        logger.error(f"Ответ: {response_text[:300]}")
-                        return False, "Неверные данные запроса"
-                    elif response.status == 429:
-                        logger.error(f"❌ Rate limit (429) - слишком много запросов")
-                        logger.error(f"Ответ: {response_text[:300]}")
-                        return False, "Слишком много запросов (rate limit)"
-                    else:
-                        logger.error(f"❌ Ошибка отправки тикета: {response.status}")
-                        logger.error(f"Ответ: {response_text[:300]}")
-                        return False, f"Ошибка API: {response.status}"
-                        
-        except aiohttp.ClientError as e:
-            logger.error(f"❌ Ошибка соединения при отправке тикета: {e}")
-            return False, f"Ошибка соединения: {str(e)[:100]}"
+            await api.create_support_ticket(fields)
+
+            # Обновляем время последнего тикета
+            self._last_ticket_time = time.time()
+            self._save_last_ticket_time()
+
+            logger.info(f"✅ Тикет с {len(order_ids)} заказами создан успешно")
+            return True, f"Тикет создан ({len(order_ids)} заказов)"
+
+        except AuthenticationError:
+            logger.error("❌ Ошибка авторизации — проверьте session_cookie")
+            return False, "Ошибка авторизации (истекла сессия)"
+        except RateLimitError:
+            logger.error("❌ Rate limit — слишком много запросов")
+            return False, "Слишком много запросов (rate limit)"
+        except ForbiddenError:
+            logger.error("❌ Доступ запрещён (антибот)")
+            return False, "Доступ запрещён (антибот)"
+        except StarAPIError as e:
+            logger.error(f"❌ Ошибка API при отправке тикета: {e}")
+            return False, f"Ошибка API: {str(e)[:100]}"
         except Exception as e:
             logger.error(f"❌ Неизвестная ошибка при отправке тикета: {e}", exc_info=True)
             return False, f"Ошибка: {str(e)[:100]}"

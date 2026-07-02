@@ -458,6 +458,8 @@ def _proxy_menu_text() -> str:
         "🔒 <b>Настройка прокси</b>\n\n"
         f"<b>Статус:</b> {status}\n"
         f"<b>Адрес:</b> <code>{addr}</code>{auth}\n\n"
+        "⚠️ Прокси используется для доступа к Telegram и применяется "
+        "<b>только после перезапуска бота</b>.\n\n"
         "Чтобы добавить или изменить прокси, нажмите кнопку ниже и введите адрес в формате:\n"
         "<code>тип://логин:пароль@ip:порт</code>\n"
         "или <code>тип://ip:порт</code>\n"
@@ -592,8 +594,26 @@ async def process_proxy_input(message: Message, state: FSMContext):
         f"✅ <b>Прокси сохранён и включён!</b>\n\n"
         f"<b>Тип:</b> {proxy_type}\n"
         f"<b>Адрес:</b> <code>{ip}:{port}</code>"
-        + (f"\n<b>Логин:</b> {login}" if login else ""),
+        + (f"\n<b>Логин:</b> {login}" if login else "")
+        + "\n\n⚠️ Чтобы прокси заработал, нужно перезапустить бота.",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Перезапустить бота", callback_data=CBT.PROXY_RESTART)],
             [InlineKeyboardButton(text="🔒 К настройкам прокси", callback_data=CBT.PROXY)]
         ])
     )
+
+
+@router.callback_query(F.data == CBT.PROXY_RESTART)
+async def callback_proxy_restart(callback: CallbackQuery):
+    """Перезапустить бота, чтобы применить настройки прокси"""
+    await callback.answer("Перезапускаю бота...", show_alert=False)
+    await callback.message.edit_text(
+        "🔄 <b>Перезапуск бота</b>\n\n"
+        "Применяю настройки прокси. Бот будет доступен через несколько секунд."
+    )
+
+    import asyncio
+    import sys
+    import os
+    await asyncio.sleep(2)
+    os.execv(sys.executable, [sys.executable] + sys.argv)

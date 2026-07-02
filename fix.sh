@@ -105,7 +105,7 @@ echo ""
 git config core.autocrlf input
 ok "core.autocrlf = input"
 
-for f in fix.sh fix.py main.py; do
+for f in fix.sh install.sh main.py; do
     [[ -f "$f" ]] && chmod +x "$f"
 done
 ok "Скрипты сделаны исполняемыми."
