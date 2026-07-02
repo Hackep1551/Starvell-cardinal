@@ -22,6 +22,9 @@ logging.getLogger('apscheduler').setLevel(logging.ERROR)
 class BackgroundTasks:
     """Управление фоновыми задачами"""
     
+    # Максимум запомненных message_id на чат (иначе set растёт бесконечно)
+    SEEN_MESSAGES_LIMIT = 500
+
     def __init__(self, bot: Bot, starvell: StarvellService, db: Database, notifier=None, auto_response=None):
         self.bot = bot
         self.starvell = starvell
@@ -33,11 +36,13 @@ class BackgroundTasks:
         self._first_check_messages = True  # Флаг первой проверки после запуска
         self._first_check_orders = True  # Флаг первой проверки заказов после запуска
         self._auto_ticket_first_run_done = False  # Флаг первого запуска авто-тикетов
+        self._my_user_id: str = ""  # Заполняется при первой проверке сообщений
+        self._custom_commands_cache: tuple = (0.0, None)  # (mtime файла, данные)
         
     def start(self):
         """Запустить фоновые задачи"""
         # Проверка новых сообщений
-        chat_interval = 5
+        chat_interval = get_config_manager().get('Monitor', 'chatPollInterval', 5)
         self.scheduler.add_job(
             self._check_new_messages_loop,
             'interval',
@@ -157,9 +162,7 @@ class BackgroundTasks:
                     continue
                 
                 # Проверяем черный список по ID
-                config = get_config_manager()
-                blacklist_section = f"Blacklist.{author_id}"
-                if config._config.has_section(blacklist_section):
+                if get_config_manager().is_blacklisted(author_id):
                     if BotConfig.DEBUG():
                         logger.debug(f"Сообщение от пользователя {author_id} игнорируется (в черном списке)")
                     continue
@@ -182,16 +185,15 @@ class BackgroundTasks:
                             break
                 
                 # Пропускаем свои сообщения (проверяем по ID из кэша или из author)
-                try:
-                    # Используем кэшированный user_id если он есть
-                    if not hasattr(self, '_my_user_id'):
+                if not self._my_user_id:
+                    try:
                         user_info = await self.starvell.get_user_info()
-                        self._my_user_id = str(user_info.get("user", {}).get("id", ""))
-                    
-                    if str(author_id) == self._my_user_id:
-                        continue
-                except Exception:
-                    pass
+                        self._my_user_id = str((user_info.get("user") or {}).get("id") or "")
+                    except Exception as e:
+                        logger.debug(f"Не удалось получить свой user_id: {e}")
+
+                if self._my_user_id and str(author_id) == self._my_user_id:
+                    continue
                 
                 # Проверяем, не уведомляли ли уже об этом сообщении
                 if chat_id not in self._seen_messages:
@@ -226,10 +228,19 @@ class BackgroundTasks:
                 
                 # Запоминаем это сообщение
                 if message_id:
-                    self._seen_messages[chat_id].add(message_id)
+                    seen = self._seen_messages[chat_id]
+                    seen.add(message_id)
+                    # Не даём набору расти бесконечно; свежие ID всё равно
+                    # отсекаются по last_message_id из БД
+                    if len(seen) > self.SEEN_MESSAGES_LIMIT:
+                        seen.clear()
+                        seen.add(message_id)
                     
+                # Приветствие при первом сообщении в чате
+                await self._send_welcome_message(chat_id, author_username or str(author_id))
+
                 # Проверяем кастомные команды
-                await self._check_custom_command(chat_id, content, author_id)
+                await self._check_custom_command(chat_id, content, author_id, author_username)
                 
                 # Логируем с указанием роли если есть
                 role_prefix = f"[{', '.join(author_roles)}] " if author_roles else ""
@@ -424,20 +435,33 @@ class BackgroundTasks:
         except Exception as e:
             logger.error(f"Ошибка при очистке данных: {e}", exc_info=True)
     
-    async def _check_custom_command(self, chat_id: str, message_text: str, author_id: str):
+    def _load_custom_commands(self):
+        """Загрузить кастомные команды (кэш с инвалидацией по mtime файла)"""
+        import json
+        from pathlib import Path
+
+        commands_file = Path("storage/custom_commands.json")
+        if not commands_file.exists():
+            return None
+
+        mtime = commands_file.stat().st_mtime
+        cached_mtime, cached_data = self._custom_commands_cache
+        if mtime == cached_mtime:
+            return cached_data
+
+        with open(commands_file, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+
+        self._custom_commands_cache = (mtime, data)
+        return data
+
+    async def _check_custom_command(self, chat_id: str, message_text: str, author_id: str, author_username: str = None):
         """Проверить и обработать кастомную команду"""
         try:
-            import json
-            from pathlib import Path
-            
-            # Загружаем кастомные команды
-            commands_file = Path("storage/custom_commands.json")
-            if not commands_file.exists():
+            data = self._load_custom_commands()
+            if not data:
                 return
-            
-            with open(commands_file, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            
+
             # Проверяем, включены ли кастомные команды
             if not data.get("enabled", False):
                 return
@@ -455,9 +479,15 @@ class BackgroundTasks:
             # Ищем соответствующую команду
             for cmd in commands:
                 if cmd["name"].lower() == command_text:
-                    # Нашли команду - отправляем ответ
+                    # Нашли команду - отправляем ответ с подстановкой переменных
                     try:
-                        await self.starvell.send_message(chat_id, cmd["text"])
+                        response = self._apply_placeholders(
+                            cmd["text"],
+                            username=author_username or str(author_id),
+                            message_text=message_text,
+                            chat_id=chat_id,
+                        )
+                        await self.starvell.send_message(chat_id, response)
                         logger.info(f"🤖 Отправлен автоответ на команду '{prefix}{cmd['name']}' пользователю {author_id}")
                     except Exception as e:
                         logger.error(f"Ошибка при отправке автоответа на команду: {e}")
@@ -466,6 +496,59 @@ class BackgroundTasks:
         except Exception as e:
             logger.error(f"Ошибка при обработке кастомной команды: {e}", exc_info=True)
     
+    @staticmethod
+    def _apply_placeholders(text: str, username: str = "", message_text: str = "", chat_id: str = "") -> str:
+        """
+        Подставить переменные в текст ответа.
+
+        Поддерживаются: $username, $message_text, $chat_id,
+        $date, $time, $full_time, $date_text, $full_date_text
+        """
+        if "$" not in text:
+            return text
+
+        now = datetime.now()
+        month_names = ["", "января", "февраля", "марта", "апреля", "мая", "июня",
+                       "июля", "августа", "сентября", "октября", "ноября", "декабря"]
+        date_text = f"{now.day} {month_names[now.month]}"
+
+        replacements = {
+            "$full_date_text": f"{date_text} {now.year} года",
+            "$date_text": date_text,
+            "$date": now.strftime("%d.%m.%Y"),
+            "$full_time": now.strftime("%H:%M:%S"),
+            "$time": now.strftime("%H:%M"),
+            "$username": username or "",
+            "$message_text": message_text or "",
+            "$chat_id": chat_id or "",
+        }
+
+        for key, value in replacements.items():
+            text = text.replace(key, value)
+
+        return text
+
+    async def _send_welcome_message(self, chat_id: str, username: str):
+        """Отправить приветствие при первом сообщении в чате"""
+        try:
+            if not BotConfig.WELCOME_MESSAGE_ENABLED():
+                return
+
+            text = BotConfig.WELCOME_MESSAGE_TEXT()
+            if not text:
+                return
+
+            # Один раз на чат — список поздоровавшихся храним в БД
+            if await self.db.is_chat_welcomed(chat_id):
+                return
+
+            text = self._apply_placeholders(text, username=username, chat_id=chat_id)
+            await self.starvell.send_message(chat_id, text)
+            await self.db.mark_chat_welcomed(chat_id)
+            logger.info(f"👋 Отправлено приветствие в чат {chat_id} ({username})")
+        except Exception as e:
+            logger.error(f"Ошибка при отправке приветствия в чат {chat_id}: {e}")
+
     async def _check_auto_responses(self):
         """Проверка и отправка автоответов"""
         try:

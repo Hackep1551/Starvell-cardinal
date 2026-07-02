@@ -30,6 +30,7 @@ class CBT:
     # Вторая страница главного меню
     ORDER_CONFIRM_RESPONSE = "order_confirm_resp"
     REVIEW_RESPONSE = "review_resp"
+    WELCOME_MESSAGE = "welcome_msg"
     CONFIGS_MENU = "configs"
     AUTHORIZED_USERS = "auth_users"
     
@@ -56,6 +57,8 @@ class CBT:
     SWITCH_ORDER_CONFIRM = "switch:order_confirm"
     SWITCH_REVIEW_RESPONSE = "switch:review_resp"
     SWITCH_USE_WATERMARK = "switch:use_watermark"
+    SWITCH_WELCOME_MESSAGE = "switch:welcome_msg"
+    SWITCH_KEEP_ALIVE = "switch:keep_alive"
     
     # Настройки авто-тикета
     AUTO_TICKET_SETTINGS = "autoticket_settings"
@@ -75,6 +78,8 @@ class CBT:
     NOTIF_ORDER_CONFIRMED = "notif:order_confirmed"
     NOTIF_REVIEW = "notif:review"
     NOTIF_AUTO_RESPONSES = "notif:auto_responses"
+    NOTIF_LOT_DEACTIVATE = "notif:lot_deactivate"
+    NOTIF_LOT_BUMP = "notif:lot_bump"
     
     # Автовыдача
     AD_LOTS_LIST = "ad_lots"
@@ -108,6 +113,12 @@ class CBT:
     UPLOAD_PLUGIN = "upload_plugin"
     PLUGIN_COMMANDS = "plugin_commands"
     PLUGIN_SETTINGS = "plugin_settings"
+
+    # Прокси
+    PROXY = "proxy_menu"
+    PROXY_ADD = "proxy_add"
+    PROXY_DISABLE = "proxy_disable"
+    PROXY_ENABLE = "proxy_enable"
 
 
 def bool_to_emoji(value: bool) -> str:
@@ -209,6 +220,12 @@ def get_main_menu_page_2(update_available: bool = False) -> InlineKeyboardMarkup
         ],
         [
             InlineKeyboardButton(
+                text="👋 Приветственное сообщение",
+                callback_data=CBT.WELCOME_MESSAGE
+            ),
+        ],
+        [
+            InlineKeyboardButton(
                 text="⚙️ Авто-тикеты",
                 callback_data=CBT.AUTO_TICKET_SETTINGS
             ),
@@ -235,6 +252,12 @@ def get_main_menu_page_2(update_available: bool = False) -> InlineKeyboardMarkup
             InlineKeyboardButton(
                 text="🔗 Сообщить об проблеме",
                 url=os.environ.get('TELEGRAM_SUPPORT_URL', 'https://t.me/starvellbugreport_bot')
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="🔒 Прокси",
+                callback_data=CBT.PROXY
             ),
         ],
         [
@@ -316,12 +339,18 @@ def get_global_switches_menu(
         ],
         [
             InlineKeyboardButton(
+                text=switch_text("Вечный онлайн", BotConfig.KEEP_ALIVE_ENABLED()),
+                callback_data=CBT.SWITCH_KEEP_ALIVE
+            ),
+        ],
+        [
+            InlineKeyboardButton(
                 text="🔙 Назад",
                 callback_data=CBT.MAIN
             ),
         ],
     ]
-    
+
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
@@ -397,6 +426,16 @@ def get_notifications_menu(
             InlineKeyboardButton(
                 text=switch_text("Ответ на отзыв", review),
                 callback_data=CBT.NOTIF_REVIEW
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text=switch_text("Деактивация лота", BotConfig.NOTIFY_LOT_DEACTIVATE()),
+                callback_data=CBT.NOTIF_LOT_DEACTIVATE
+            ),
+            InlineKeyboardButton(
+                text=switch_text("Поднятие лотов", BotConfig.NOTIFY_LOT_BUMP()),
+                callback_data=CBT.NOTIF_LOT_BUMP
             ),
         ],
         [
@@ -993,6 +1032,31 @@ def get_order_confirm_response_menu(enabled: bool, text: str) -> InlineKeyboardM
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
+def get_welcome_message_menu(enabled: bool, text: str) -> InlineKeyboardMarkup:
+    """Меню настройки приветственного сообщения"""
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                text=f"{'✅' if enabled else '❌'} Включено: {'Да' if enabled else 'Нет'}",
+                callback_data=CBT.SWITCH_WELCOME_MESSAGE
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="✏️ Изменить текст приветствия",
+                callback_data="edit_welcome_text"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="🔙 Назад",
+                callback_data=CBT.MAIN_PAGE_2
+            )
+        ]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
 def get_review_response_menu(enabled: bool, text: str) -> InlineKeyboardMarkup:
     """Меню настройки ответа на отзыв"""
     keyboard = [
@@ -1191,4 +1255,38 @@ def get_custom_commands_menu(commands: list, page: int = 0, enabled: bool = Fals
         )
     ])
     
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_proxy_menu(enabled: bool, proxy_set: bool, proxy_type: str = 'socks5', ip: str = '', port: str = '') -> InlineKeyboardMarkup:
+    """Меню настройки прокси"""
+    status = bool_to_emoji(enabled) + (" Включён" if enabled else " Выключён")
+    addr = f"{proxy_type}://{ip}:{port}" if ip and port else "не настроен"
+
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                text=f"📡 {status}  |  {addr}",
+                callback_data="empty"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="➕ Добавить / изменить прокси",
+                callback_data=CBT.PROXY_ADD
+            )
+        ],
+    ]
+
+    if proxy_set:
+        toggle_text = "❌ Выключить прокси" if enabled else "✅ Включить прокси"
+        toggle_cb = CBT.PROXY_DISABLE if enabled else CBT.PROXY_ENABLE
+        keyboard.append([
+            InlineKeyboardButton(text=toggle_text, callback_data=toggle_cb)
+        ])
+
+    keyboard.append([
+        InlineKeyboardButton(text="🔙 Назад", callback_data=CBT.MAIN_PAGE_2)
+    ])
+
     return InlineKeyboardMarkup(inline_keyboard=keyboard)

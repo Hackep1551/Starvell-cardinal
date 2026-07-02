@@ -9,6 +9,7 @@ from .exceptions import (
     AuthenticationError,
     RateLimitError,
     NotFoundError,
+    ForbiddenError,
     ServerError,
 )
 
@@ -19,5 +20,6 @@ __all__ = [
     "AuthenticationError",
     "RateLimitError",
     "NotFoundError",
+    "ForbiddenError",
     "ServerError",
 ]

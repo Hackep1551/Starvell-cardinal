@@ -1039,6 +1039,45 @@ async def callback_switch_auto_ticket(callback: CallbackQuery):
     )
 
 
+@router.callback_query(F.data == CBT.SWITCH_KEEP_ALIVE)
+async def callback_switch_keep_alive(callback: CallbackQuery, keep_alive=None, **kwargs):
+    """Переключить вечный онлайн"""
+    # Переключаем
+    current = BotConfig.KEEP_ALIVE_ENABLED()
+    BotConfig.update(**{"KeepAlive.enabled": not current})
+
+    # Запускаем/останавливаем сервис сразу, без перезапуска бота
+    if keep_alive:
+        try:
+            if not current:
+                await keep_alive.start()
+            else:
+                await keep_alive.stop()
+        except Exception:
+            pass
+
+    # Уведомление об изменении
+    status = "включен" if not current else "выключен"
+    await callback.answer(f"Вечный онлайн {status}", show_alert=False)
+
+    # Обновляем глобальное меню
+    auto_bump = BotConfig.AUTO_BUMP_ENABLED()
+    auto_delivery = BotConfig.AUTO_DELIVERY_ENABLED()
+    auto_restore = BotConfig.AUTO_RESTORE_ENABLED()
+    auto_read = BotConfig.AUTO_READ_ENABLED()
+    auto_ticket = BotConfig.AUTO_TICKET_ENABLED()
+    auto_install = BotConfig.AUTO_UPDATE_INSTALL()
+    order_confirm = BotConfig.ORDER_CONFIRM_RESPONSE_ENABLED()
+    review_response = BotConfig.REVIEW_RESPONSE_ENABLED()
+
+    status_text = "⚙️ <b>Глобальные переключатели</b>\n\nЗдесь вы можете включать и отключать основные функции бота.\n\n"
+
+    await callback.message.edit_text(
+        status_text,
+        reply_markup=get_global_switches_menu(auto_bump, auto_delivery, auto_restore, auto_read, auto_ticket, auto_install, order_confirm, review_response)
+    )
+
+
 @router.callback_query(F.data == CBT.SWITCH_AUTO_TICKET_NOTIFY)
 async def callback_switch_auto_ticket_notify(callback: CallbackQuery):
     """Переключить уведомления авто-тикета"""
@@ -1671,6 +1710,60 @@ async def callback_notif_review(callback: CallbackQuery):
     )
 
 
+@router.callback_query(F.data == CBT.NOTIF_LOT_DEACTIVATE)
+async def callback_notif_lot_deactivate(callback: CallbackQuery):
+    """Переключить уведомления о деактивации лотов"""
+    current = BotConfig.NOTIFY_LOT_DEACTIVATE()
+    BotConfig.update(**{"notifications.lot_deactivate": not current})
+
+    status = "включены" if not current else "выключены"
+    await callback.answer(f"Уведомления о деактивации лотов {status}", show_alert=False)
+
+    # Обновляем меню
+    messages = BotConfig.NOTIFY_NEW_MESSAGES()
+    orders = BotConfig.NOTIFY_NEW_ORDERS()
+    restore = BotConfig.NOTIFY_LOT_RESTORE()
+    start = BotConfig.NOTIFY_BOT_START()
+    stop = BotConfig.NOTIFY_BOT_STOP()
+    auto_ticket = BotConfig.NOTIFY_AUTO_TICKET()
+    order_confirm = BotConfig.NOTIFY_ORDER_CONFIRMED()
+    review = BotConfig.NOTIFY_REVIEW()
+    auto_responses = BotConfig.NOTIFY_AUTO_RESPONSES()
+
+    status_text = "🔔 <b>Настройки уведомлений</b>\\n\\nНастройте какие уведомления, которые вам нужны получать."
+
+    await callback.message.edit_text(
+        status_text,
+        reply_markup=get_notifications_menu(messages, orders, restore, start, stop, auto_ticket, order_confirm, review, auto_responses, BotConfig.NOTIFY_SUPPORT_MESSAGES())
+    )
+
+
+@router.callback_query(F.data == CBT.NOTIF_LOT_BUMP)
+async def callback_notif_lot_bump(callback: CallbackQuery):
+    """Переключить уведомления о поднятии лотов"""
+    current = BotConfig.NOTIFY_LOT_BUMP()
+    BotConfig.update(**{"notifications.lot_bump": not current})
+
+    status = "включены" if not current else "выключены"
+    await callback.answer(f"Уведомления о поднятии лотов {status}", show_alert=False)
+
+    # Обновляем меню
+    messages = BotConfig.NOTIFY_NEW_MESSAGES()
+    orders = BotConfig.NOTIFY_NEW_ORDERS()
+    restore = BotConfig.NOTIFY_LOT_RESTORE()
+    start = BotConfig.NOTIFY_BOT_START()
+    stop = BotConfig.NOTIFY_BOT_STOP()
+    auto_ticket = BotConfig.NOTIFY_AUTO_TICKET()
+    order_confirm = BotConfig.NOTIFY_ORDER_CONFIRMED()
+    review = BotConfig.NOTIFY_REVIEW()
+    auto_responses = BotConfig.NOTIFY_AUTO_RESPONSES()
+
+    status_text = "🔔 <b>Настройки уведомлений</b>\\n\\nНастройте какие уведомления, которые вам нужны получать."
+
+    await callback.message.edit_text(
+        status_text,
+        reply_markup=get_notifications_menu(messages, orders, restore, start, stop, auto_ticket, order_confirm, review, auto_responses, BotConfig.NOTIFY_SUPPORT_MESSAGES())
+    )
 
 
 

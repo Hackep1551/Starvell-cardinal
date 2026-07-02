@@ -3,6 +3,7 @@
 """
 
 import asyncio
+import time
 from typing import Optional, List, Dict, Any
 from api import StarAPI, StarAPIError
 from bot.core.config import BotConfig
@@ -18,6 +19,8 @@ class StarvellService:
         self._lock = asyncio.Lock()
         self._session_error_notified = False  # Флаг для уведомления об ошибке сессии (1 раз)
         self.last_user_info: Dict[str, Any] = {}
+        self._orders_cache: Optional[List[Dict[str, Any]]] = None
+        self._orders_cache_at: float = 0.0
         
     async def start(self):
         """Запустить сервис"""
@@ -72,10 +75,13 @@ class StarvellService:
         try:
             info = await self.api.get_user_info()
             self.last_user_info = info
+            # Starvell на протухшей куке отдаёт страницу без user, а не 401
+            if not info.get("authorized"):
+                await self._notify_session_error()
             return info
         except Exception as e:
-            from api.exceptions import NotFoundError
-            if isinstance(e, NotFoundError):
+            from api.exceptions import AuthenticationError
+            if isinstance(e, AuthenticationError):
                 await self._notify_session_error()
             raise
     
@@ -102,8 +108,8 @@ class StarvellService:
             data = await self.api.get_chats()
             return data.get("pageProps", {}).get("chats", [])
         except Exception as e:
-            from api.exceptions import NotFoundError
-            if isinstance(e, NotFoundError):
+            from api.exceptions import AuthenticationError
+            if isinstance(e, AuthenticationError):
                 await self._notify_session_error()
             raise
         
@@ -120,8 +126,8 @@ class StarvellService:
         try:
             return await self.api.get_messages(chat_id, limit)
         except Exception as e:
-            from api.exceptions import NotFoundError
-            if isinstance(e, NotFoundError):
+            from api.exceptions import AuthenticationError
+            if isinstance(e, AuthenticationError):
                 await self._notify_session_error()
             raise
         
@@ -159,19 +165,35 @@ class StarvellService:
             raise RuntimeError("API не инициализирован")
         return await self.api.find_chat_by_user_id(user_id)
             
-    async def get_orders(self) -> List[Dict[str, Any]]:
-        """Получить список заказов"""
+    async def get_orders(self, max_age: float = 0) -> List[Dict[str, Any]]:
+        """
+        Получить список заказов
+
+        Args:
+            max_age: Отдать закэшированный список, если он не старше
+                     этого количества секунд (0 — всегда свежий запрос)
+        """
         if not self.api:
             raise RuntimeError("API не инициализирован")
         
+        now = time.monotonic()
+
+        # Кэш: заказы дёргают три потребителя (мониторинг, автоответы,
+        # авто-тикеты) — не ходим в API, если данные ещё свежие
+        if max_age > 0 and self._orders_cache is not None:
+            if now - self._orders_cache_at < max_age:
+                return self._orders_cache
+
         try:
             # Используем новый метод для получения ВСЕХ заказов
             orders = await self.api.get_all_orders()
-            return orders if orders else []
+            orders = orders if orders else []
+            self._orders_cache = orders
+            self._orders_cache_at = time.monotonic()
+            return orders
         except Exception as e:
-            # Проверяем, является ли это ошибкой NotFound (обычно устаревшая сессия)
-            from api.exceptions import NotFoundError
-            if isinstance(e, NotFoundError):
+            from api.exceptions import AuthenticationError
+            if isinstance(e, AuthenticationError):
                 await self._notify_session_error()
             raise
     
@@ -193,8 +215,8 @@ class StarvellService:
             orders = await self.api.get_all_orders(status=status)
             return orders if orders else []
         except Exception as e:
-            from api.exceptions import NotFoundError
-            if isinstance(e, NotFoundError):
+            from api.exceptions import AuthenticationError
+            if isinstance(e, AuthenticationError):
                 await self._notify_session_error()
             raise
         
@@ -242,8 +264,8 @@ class StarvellService:
                 
                 return result
             except Exception as e:
-                from api.exceptions import NotFoundError
-                if isinstance(e, NotFoundError):
+                from api.exceptions import AuthenticationError
+                if isinstance(e, AuthenticationError):
                     await self._notify_session_error()
                 await self.db.add_bump_history(game_id, category_ids, False)
                 raise
@@ -389,8 +411,8 @@ class StarvellService:
             offers = await self.api.get_user_offers(user_id)
             return offers
         except Exception as e:
-            from api.exceptions import NotFoundError
-            if isinstance(e, NotFoundError):
+            from api.exceptions import AuthenticationError
+            if isinstance(e, AuthenticationError):
                 await self._notify_session_error()
             raise RuntimeError(f"Ошибка получения лотов: {e}")
     
@@ -407,14 +429,40 @@ class StarvellService:
         """
         if not self.api:
             raise RuntimeError("API не инициализирован")
-        
+
         try:
-            # TODO: Реализовать активацию через API Starvell
-            # result = await self.api.activate_lot(lot_id, amount)
-            # Пока возвращаем заглушку
+            await self.api.update_offer(lot_id, availability=amount, is_active=True)
             return True
         except Exception as e:
-            raise RuntimeError(f"Ошибка активации лота {lot_id}: {e}")
+            import logging
+            logging.getLogger(__name__).error(f"Ошибка активации лота {lot_id}: {e}")
+            return False
+
+    async def update_lot(
+        self,
+        lot_id,
+        availability: Optional[int] = None,
+        is_active: Optional[bool] = None,
+        price: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """
+        Изменить настройки лота: активность, количество, цену
+
+        Args:
+            lot_id: ID лота
+            availability: Количество товара
+            is_active: Включить/выключить лот
+            price: Цена (в копейках)
+        """
+        if not self.api:
+            raise RuntimeError("API не инициализирован")
+
+        return await self.api.update_offer(
+            lot_id,
+            availability=availability,
+            is_active=is_active,
+            price=price,
+        )
     
     async def keep_alive(self) -> bool:
         """
@@ -425,8 +473,22 @@ class StarvellService:
         """
         if not self.api:
             raise RuntimeError("API не инициализирован")
-        
+
         return await self.api.keep_alive()
+
+    async def is_socket_io_available(self) -> bool:
+        """Проверить доступность Socket.IO для вечного онлайна"""
+        if not self.api:
+            raise RuntimeError("API не инициализирован")
+
+        return await self.api.is_socket_io_available()
+
+    async def connect_online_socket(self):
+        """Открыть websocket для поддержания онлайна"""
+        if not self.api:
+            raise RuntimeError("API не инициализирован")
+
+        return await self.api.connect_online_socket()
     
     async def raise_lots(self, game_id: int, category_ids: List[int]) -> bool:
         """

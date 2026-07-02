@@ -20,6 +20,7 @@ class NotificationType:
     NEW_ORDER = "new_order"
     ORDER_CONFIRMED = "order_confirmed"
     ORDER_CANCELLED = "order_cancelled"
+    NEW_REVIEW = "new_review"
     LOT_DEACTIVATED = "lot_deactivated"
     LOT_RESTORED = "lot_restored"
     LOT_BUMPED = "lot_bumped"
@@ -44,6 +45,7 @@ class NotificationManager:
         NotificationType.NEW_ORDER: "📦",
         NotificationType.ORDER_CONFIRMED: "✅",
         NotificationType.ORDER_CANCELLED: "❌",
+        NotificationType.NEW_REVIEW: "⭐",
         NotificationType.LOT_DEACTIVATED: "🚫",
         NotificationType.LOT_RESTORED: "🔄",
         NotificationType.LOT_BUMPED: "⬆️",
@@ -65,6 +67,7 @@ class NotificationManager:
         NotificationType.NEW_ORDER: "Новый заказ",
         NotificationType.ORDER_CONFIRMED: "Заказ подтверждён",
         NotificationType.ORDER_CANCELLED: "Заказ отменён",
+        NotificationType.NEW_REVIEW: "Новый отзыв",
         NotificationType.LOT_DEACTIVATED: "Лот деактивирован",
         NotificationType.LOT_RESTORED: "Лот восстановлен",
         NotificationType.LOT_BUMPED: "Лот поднят",
@@ -131,6 +134,7 @@ class NotificationManager:
             NotificationType.BOT_STARTED: BotConfig.NOTIFY_BOT_START,
             NotificationType.BOT_STOPPED: BotConfig.NOTIFY_BOT_STOP,
             NotificationType.ORDER_CONFIRMED: BotConfig.NOTIFY_ORDER_CONFIRMED,
+            NotificationType.NEW_REVIEW: BotConfig.NOTIFY_REVIEW,
         }
         
         # Если есть соответствующая настройка в конфиге

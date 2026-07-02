@@ -7,6 +7,8 @@ import sys
 import configparser
 import hashlib
 import time
+import re
+import socket
 from pathlib import Path
 
 try:
@@ -47,7 +49,7 @@ def print_logo():
     print(logo)
 
 
-def print_header(step=None, total=4):
+def print_header(step=None, total=5):
     """Красивый заголовок с индикатором прогресса"""
     clear()
     print_logo()
@@ -158,7 +160,7 @@ def run_setup():
     print(f"║{' ' * 70}║")
     print(f"║{' ' * 15}{Fore.WHITE}{Style.BRIGHT}🚀 Мастер быстрой настройки бота 🚀{Fore.CYAN}{Style.NORMAL}{' ' * 18}║")
     print(f"║{' ' * 70}║")
-    print(f"║{' ' * 10}{Fore.WHITE}Сейчас мы за 4 простых шага настроим ваш бот{Fore.CYAN}{' ' * 16}║")
+    print(f"║{' ' * 10}{Fore.WHITE}Сейчас мы за 5 простых шагов настроим ваш бот{Fore.CYAN}{' ' * 15}║")
     print(f"║{' ' * 15}{Fore.WHITE}Это займёт всего пару минут!{Fore.CYAN}{' ' * 27}║")
     print(f"║{' ' * 70}║")
     print(f"╚{'═' * 70}╝{Style.RESET_ALL}\n")
@@ -312,11 +314,88 @@ def run_setup():
         'autoTicketOrderAge': '48'
     }
     
-    
+
     # ═══════════════════════════════════════════════════════════
-    # Сохранение
+    # ШАГ 4: Прокси
     # ═══════════════════════════════════════════════════════════
-    
+    print_header(step=4)
+
+    print_box(
+        "🔒 ШАГ 4: Прокси (необязательно)",
+        [
+            "Прокси нужен если Telegram заблокирован в вашей стране.",
+            "",
+            "Поддерживаемые форматы:",
+            "  socks5://ip:port",
+            "  socks4://ip:port",
+            "  http://ip:port",
+            "  socks5://login:password@ip:port",
+            "",
+            "Оставьте пустым если прокси не нужен."
+        ]
+    )
+
+    proxy_cfg = {'enabled': '0', 'type': 'socks5', 'ip': '', 'port': '', 'login': '', 'password': ''}
+    proxy_pattern = re.compile(
+        r'^(socks5|socks4|http)://(?:([^:@]+):([^@]*)@)?([\w\d\.\-]+):(\d{1,5})$',
+        re.IGNORECASE
+    )
+
+    while True:
+        proxy_raw = ask("Прокси (или Enter для пропуска)", "")
+
+        if not proxy_raw:
+            print_success("Прокси пропущен. Продолжаем без прокси.\n")
+            break
+
+        m = proxy_pattern.match(proxy_raw)
+        if not m:
+            print_error("Неверный формат! Пример: socks5://1.2.3.4:1080\n")
+            continue
+
+        p_type = m.group(1).lower()
+        p_login = m.group(2) or ''
+        p_password = m.group(3) or ''
+        p_ip = m.group(4)
+        p_port = m.group(5)
+
+        # Проверка валидности прокси
+        print(f"{Fore.CYAN}⟳  Проверка прокси {p_type}://{p_ip}:{p_port} ...", end="", flush=True)
+        proxy_ok = False
+        try:
+            sock = socket.create_connection((p_ip, int(p_port)), timeout=5)
+            sock.close()
+            proxy_ok = True
+        except (socket.timeout, ConnectionRefusedError, OSError):
+            proxy_ok = False
+
+        if proxy_ok:
+            print(f" {Fore.GREEN}✓ Доступен!{Style.RESET_ALL}")
+            print_success(f"Прокси принят: {p_type}://{p_ip}:{p_port}\n")
+            proxy_cfg = {
+                'enabled': '1',
+                'type': p_type,
+                'ip': p_ip,
+                'port': p_port,
+                'login': p_login,
+                'password': p_password
+            }
+            break
+        else:
+            print(f" {Fore.RED}✗ Недоступен!{Style.RESET_ALL}")
+            print_error(f"Не удалось подключиться к {p_ip}:{p_port} (timeout 5 сек)")
+            retry = ask_yes_no("Попробовать другой прокси?", default=True)
+            if not retry:
+                print_warning("Прокси пропущен. Продолжаем без прокси.\n")
+                break
+
+    config['Proxy'] = proxy_cfg
+
+    # ═══════════════════════════════════════════════════════════
+    # ШАГ 5: Сохранение
+    # ═══════════════════════════════════════════════════════════
+    print_header(step=5)
+
     # Дополнительные настройки (по умолчанию)
     config['Notifications'] = {
         'checkInterval': '30',
@@ -395,12 +474,14 @@ def run_setup():
     print(f"║{' ' * 70}║")
     print(f"╚{'═' * 70}╝{Style.RESET_ALL}\n")
     
+    proxy_summary = f"{proxy_cfg['type']}://{proxy_cfg['ip']}:{proxy_cfg['port']}" if proxy_cfg['enabled'] == '1' else "не настроен"
     print_box(
         "📋 Сводка установки",
         [
             f"✓ Bot Token: {bot_token[:20]}...{bot_token[-10:]}",
             f"✓ Пароль: {'*' * 16}",
             f"✓ Session: {session[:25]}...{session[-15:] if len(session) > 40 else ''}",
+            f"✓ Прокси: {proxy_summary}",
             f"✓ Конфигурация сохранена: configs/_main.cfg"
         ],
         color=Fore.GREEN

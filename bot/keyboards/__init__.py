@@ -18,6 +18,7 @@ from .keyboards import (
     get_plugin_info_menu,
     get_order_confirm_response_menu,
     get_review_response_menu,
+    get_welcome_message_menu,
     get_configs_menu,
     get_authorized_users_menu,
     get_select_template_menu,
@@ -25,6 +26,7 @@ from .keyboards import (
     get_template_detail_menu,
     get_template_edit_menu,
     get_custom_commands_menu,
+    get_proxy_menu,
 )
 from .plugins import plugins_list, edit_plugin, plugin_commands
 
@@ -43,6 +45,7 @@ __all__ = [
     'get_plugin_info_menu',
     'get_order_confirm_response_menu',
     'get_review_response_menu',
+    'get_welcome_message_menu',
     'get_configs_menu',
     'get_authorized_users_menu',
     'get_select_template_menu',
@@ -51,6 +54,7 @@ __all__ = [
     'get_template_edit_menu',
     'get_custom_commands_menu',
     'get_auto_ticket_settings_menu',
+    'get_proxy_menu',
     'plugins_list',
     'edit_plugin',
     'plugin_commands',

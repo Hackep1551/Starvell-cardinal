@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
+from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.enums import ParseMode
 from aiogram.types import BotCommand
 
@@ -45,8 +46,30 @@ async def main():
         
     
     # Инициализация компонентов
+    # Прокси для доступа к Telegram (актуально для РФ)
+    bot_session = None
+    proxy_url = BotConfig.PROXY_URL()
+    if proxy_url:
+        try:
+            bot_session = AiohttpSession(proxy=proxy_url)
+            # В лог без пароля
+            safe_url = proxy_url
+            if '@' in safe_url:
+                safe_url = safe_url.split('://', 1)[0] + '://***@' + safe_url.split('@', 1)[1]
+            logger.info(f"🌐 Подключение к Telegram через прокси: {safe_url}")
+        except RuntimeError:
+            logger.error(
+                "Не удалось включить прокси: не установлен aiohttp_socks. "
+                "Установите: pip install aiohttp_socks"
+            )
+            bot_session = None
+        except Exception as e:
+            logger.error(f"Ошибка инициализации прокси ({e}). Запускаюсь без прокси.")
+            bot_session = None
+
     bot = Bot(
         token=BotConfig.BOT_TOKEN(),
+        session=bot_session,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML)
     )
     dp = Dispatcher()
@@ -192,6 +215,7 @@ async def main():
         "auto_raise": auto_raise,
         "auto_update": auto_update,
         "auto_response": auto_response,
+        "keep_alive": keep_alive,
         "autoticket_service": autoticket_service,
         "plugin_manager": plugin_manager,
     })

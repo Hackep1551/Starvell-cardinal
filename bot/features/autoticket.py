@@ -258,7 +258,10 @@ class AutoTicketService:
             
             
             unconfirmed = []
-            current_time = datetime.now()
+            # Starvell отдаёт даты в UTC — считаем возраст тоже в UTC,
+            # иначе при локальной таймзоне возраст уезжает на её смещение
+            from datetime import timezone
+            current_time = datetime.now(timezone.utc)
             
             # Счётчики для статистики
             stats = {
@@ -281,9 +284,9 @@ class AutoTicketService:
                         # Убираем Z и парсим
                         created_at_clean = created_at.replace('Z', '+00:00')
                         order_dt = datetime.fromisoformat(created_at_clean)
-                        # Конвертируем в naive datetime для сравнения
-                        if order_dt.tzinfo is not None:
-                            order_dt = order_dt.replace(tzinfo=None)
+                        # Дата без таймзоны — считаем что это UTC
+                        if order_dt.tzinfo is None:
+                            order_dt = order_dt.replace(tzinfo=timezone.utc)
                         logger.debug(f"Заказ {order_id[:8]}... дата: {created_at} → {order_dt}")
                     except (ValueError, AttributeError) as e:
                         logger.warning(f"Ошибка парсинга даты {created_at}: {e}")
@@ -293,7 +296,7 @@ class AutoTicketService:
                     timestamp = created_at
                     if timestamp > 3000000000:  # Если > 2065 год, значит миллисекунды
                         timestamp = timestamp / 1000
-                    order_dt = datetime.fromtimestamp(timestamp)
+                    order_dt = datetime.fromtimestamp(timestamp, tz=timezone.utc)
                     logger.debug(f"Заказ {order_id[:8]}... timestamp: {created_at} → {order_dt}")
                 else:
                     logger.warning(f"Заказ {order_id[:8]}... неизвестный формат даты: {type(created_at)} = {created_at}")

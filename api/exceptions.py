@@ -21,6 +21,11 @@ class NotFoundError(StarAPIError):
     pass
 
 
+class ForbiddenError(StarAPIError):
+    """Доступ запрещён (403) — обычно блокировка антиботом QRATOR"""
+    pass
+
+
 class ServerError(StarAPIError):
     """Ошибка сервера (5xx)"""
     pass

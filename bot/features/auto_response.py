@@ -77,9 +77,9 @@ class AutoResponseService:
             
             if not order_confirm_enabled and not review_response_enabled:
                 return
-            
-            # Получаем все заказы
-            orders = await self.starvell.get_orders()
+
+            # Получаем все заказы (свежий кэш от мониторинга переиспользуем)
+            orders = await self.starvell.get_orders(max_age=20)
             
             for order in orders:
                 order_id = order.get("id")
@@ -115,9 +115,7 @@ class AutoResponseService:
         # Проверяем черный список (по buyer ID если есть)
         buyer_id = order.get("buyerId") or order.get("buyer_id")
         if buyer_id:
-            config = get_config_manager()
-            blacklist_section = f"Blacklist.{buyer_id}"
-            if config._config.has_section(blacklist_section):
+            if get_config_manager().is_blacklisted(buyer_id):
                 logger.debug(f"Автоответ на заказ {order_id[:8]} пропущен (покупатель {buyer_id} в ЧС)")
                 self._confirmed_orders.add(order_id)  # Помечаем как обработанный
                 return
@@ -175,48 +173,80 @@ class AutoResponseService:
         # Проверяем черный список (по buyer ID если есть)
         buyer_id = order.get("buyerId") or order.get("buyer_id")
         if buyer_id:
-            config = get_config_manager()
-            blacklist_section = f"Blacklist.{buyer_id}"
-            if config._config.has_section(blacklist_section):
+            if get_config_manager().is_blacklisted(buyer_id):
                 logger.debug(f"Автоответ на отзыв заказа {order_id[:8]} пропущен (покупатель {buyer_id} в ЧС)")
                 self._reviewed_orders.add(order_id)  # Помечаем как обработанный
                 return
         
         try:
-            # Получаем детали заказа для получения chat_id
+            # Получаем детали заказа - там chat_id и полные данные отзыва
             order_details = await self.starvell.get_order_details(order_id)
-            
+            page_props = order_details.get("pageProps", {})
+
             # Извлекаем chat_id
             chat_id = None
-            page_props = order_details.get("pageProps", {})
-            
-            # Пробуем разные варианты
+            order_obj = page_props.get("order") or {}
             if "chat" in page_props and isinstance(page_props["chat"], dict):
                 chat_id = page_props["chat"].get("id")
+            elif order_obj.get("chatId"):
+                chat_id = order_obj.get("chatId")
             elif "chatId" in order:
                 chat_id = order.get("chatId")
             elif "chat_id" in order:
                 chat_id = order.get("chat_id")
-                
+
             if not chat_id:
                 logger.warning(f"Не удалось найти chat_id для заказа {order_id} (отзыв)")
                 # Помечаем как обработанный, чтобы не спамить логи
                 self._reviewed_orders.add(order_id)
                 return
-            
-            # Получаем информацию об отзыве
-            rating = review.get("rating", "N/A")
-            comment = review.get("comment", "")
-            
+
+            # Полный отзыв из деталей заказа (в списке заказов он урезанный)
+            full_review = page_props.get("review") or order_obj.get("review") or review
+            rating = full_review.get("rating", "N/A")
+            comment = full_review.get("content") or full_review.get("comment") or ""
+
             # Отправляем ответ
             response_text = BotConfig.REVIEW_RESPONSE_TEXT()
             await self.starvell.send_message(chat_id, response_text)
-            
+
             # Помечаем как обработанный
             self._reviewed_orders.add(order_id)
-            
+
             logger.info(f"⭐ Отправлен автоответ на отзыв (рейтинг: {rating}) для заказа {order_id[:8]}")
-            
+
+            # Уведомляем админов о новом отзыве
+            await self._notify_new_review(order, full_review, rating, comment)
+
         except Exception as e:
             logger.error(f"Ошибка при отправке ответа на отзыв для заказа {order_id}: {e}")
             # Не добавляем в обработанные, чтобы попробовать ещё раз
+
+    async def _notify_new_review(self, order: Dict, review: Dict, rating, comment: str):
+        """Отправить админам уведомление о новом отзыве"""
+        try:
+            from bot.core.notifications import get_notification_manager, NotificationType
+            notif_manager = get_notification_manager()
+            if not notif_manager:
+                return
+
+            stars = "⭐" * rating if isinstance(rating, int) else str(rating)
+
+            buyer = order.get("user") or {}
+            author = buyer.get("username") or buyer.get("nickname") or "Покупатель"
+
+            text = f"<b>Оценка:</b> {stars}\n<b>От:</b> {author}"
+            if comment:
+                text += f"\n\n<i>{comment[:500]}</i>"
+
+            # Доп. оценки скорости (Starvell отдаёт их в деталях отзыва)
+            delivery_speed = review.get("deliverySpeedRating")
+            response_speed = review.get("responseSpeedRating")
+            if delivery_speed:
+                text += f"\n\n<b>Скорость выдачи:</b> {delivery_speed}/5"
+            if response_speed:
+                text += f"\n<b>Скорость ответа:</b> {response_speed}/5"
+
+            await notif_manager.notify_all_admins(NotificationType.NEW_REVIEW, text)
+        except Exception as e:
+            logger.debug(f"Не удалось отправить уведомление об отзыве: {e}")

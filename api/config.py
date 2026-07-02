@@ -19,9 +19,22 @@ class Config:
     # Кэш для build_id
     BUILD_ID_CACHE_TTL = 1800  # 30 минут
     
+    # Лимит запросов к API (в минуту) — QRATOR банит за частые запросы
+    MAX_REQUESTS_PER_MINUTE = 40
+
     # User-Agent по умолчанию
     DEFAULT_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36"
-    
+
+    # Заголовки как у реального Chrome — без них QRATOR режет запросы
+    BROWSER_HEADERS = {
+        "sec-ch-ua": '"Not)A;Brand";v="8", "Chromium";v="138", "Google Chrome";v="138"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"Windows"',
+        "sec-fetch-dest": "empty",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-site": "same-origin",
+    }
+
     # Cookies по умолчанию
     DEFAULT_COOKIES = {
         "starvell.theme": "dark",

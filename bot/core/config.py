@@ -86,6 +86,11 @@ class ConfigManager:
             'reviewResponse': 'false',
             'reviewResponseText': 'Благодарю за отзыв! Рад был помочь.'
         }
+
+        self._config['WelcomeMessage'] = {
+            'enabled': 'false',
+            'text': 'Здравствуйте, $username! Я скоро отвечу на ваше сообщение.'
+        }
         
         self._config['Monitor'] = { # Устарело, оставить для совместимости
             'chatPollInterval': '5',
@@ -101,9 +106,16 @@ class ConfigManager:
         self._config['Storage'] = {
             'dir': 'storage'
         }
-        
-        # Прокси больше не поддерживается — параметр удалён
-        
+
+        self._config['Proxy'] = {
+            'enabled': 'false',
+            'type': 'socks5',
+            'ip': '',
+            'port': '',
+            'login': '',
+            'password': ''
+        }
+
         self._config['AutoUpdate'] = {
             'enabled': 'true'
         }
@@ -168,6 +180,10 @@ class ConfigManager:
                 'reviewResponse': 'false',
                 'reviewResponseText': 'Благодарю за отзыв! Рад был помочь.'
             },
+            'WelcomeMessage': {
+                'enabled': 'false',
+                'text': 'Здравствуйте, $username! Я скоро отвечу на ваше сообщение.'
+            },
             'Monitor': {
                 'chatPollInterval': '5',
                 'ordersPollInterval': '10',
@@ -180,7 +196,14 @@ class ConfigManager:
             'Storage': {
                 'dir': 'storage'
             },
-            # Proxy section removed
+            'Proxy': {
+                'enabled': 'false',
+                'type': 'socks5',
+                'ip': '',
+                'port': '',
+                'login': '',
+                'password': ''
+            },
             'AutoUpdate': {
                 'enabled': 'true'
             },
@@ -199,6 +222,16 @@ class ConfigManager:
             }
         }
 
+    # Секции, создаваемые в рантайме — их нельзя удалять при синхронизации схемы
+    DYNAMIC_SECTIONS = ('Blacklist', 'AutoDelivery')
+
+    def _is_dynamic_section(self, section: str) -> bool:
+        """Секция создана в рантайме (ЧС, автовыдача) — не трогаем при sanitize"""
+        for prefix in self.DYNAMIC_SECTIONS:
+            if section == prefix or section.startswith(prefix + '.'):
+                return True
+        return False
+
     def _sanitize_config(self):
         """Синхронизировать текущий конфиг со схемой по умолчанию.
 
@@ -208,9 +241,10 @@ class ConfigManager:
         default = self._get_default_template()
         changes_made = False
 
-        # Удаляем лишние секции (те, которые не описаны в шаблоне)
+        # Удаляем лишние секции (те, которые не описаны в шаблоне),
+        # кроме динамических — там живут ЧС и настройки автовыдачи
         for section in list(self._config.sections()):
-            if section not in default:
+            if section not in default and not self._is_dynamic_section(section):
                 del self._config[section]
                 changes_made = True
 
@@ -307,6 +341,10 @@ class ConfigManager:
                 result[section][key] = self._parse_value(value)
         return result
 
+    def is_blacklisted(self, user_id) -> bool:
+        """Проверить, находится ли пользователь в чёрном списке"""
+        return self._config.has_section(f"Blacklist.{user_id}")
+
 
 # Глобальный экземпляр конфигурации
 _config_manager = ConfigManager()
@@ -349,47 +387,67 @@ class BotConfig:
         default_ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         return _config_manager.get('Starvell', 'user_agent', default_ua)
     
-    # === Прокси ===
+    # === Прокси (для доступа к Telegram, например из РФ) ===
     @staticmethod
     def PROXY_ENABLED() -> bool:
-        # Proxy support removed — всегда отключено
-        return False
-    
+        return _config_manager.get('Proxy', 'enabled', False)
+
+    @staticmethod
+    def PROXY_TYPE() -> str:
+        """Тип прокси: socks5 | socks4 | http"""
+        proxy_type = str(_config_manager.get('Proxy', 'type', 'socks5') or 'socks5').strip().lower()
+        if proxy_type not in ('socks5', 'socks4', 'http'):
+            proxy_type = 'socks5'
+        return proxy_type
+
     @staticmethod
     def PROXY_IP() -> str:
-        return ''
-    
+        return str(_config_manager.get('Proxy', 'ip', '') or '').strip()
+
     @staticmethod
     def PROXY_PORT() -> str:
-        return ''
-    
+        return str(_config_manager.get('Proxy', 'port', '') or '').strip()
+
     @staticmethod
     def PROXY_LOGIN() -> str:
-        return ''
-    
+        return str(_config_manager.get('Proxy', 'login', '') or '').strip()
+
     @staticmethod
     def PROXY_PASSWORD() -> str:
-        return ''
-    
+        return str(_config_manager.get('Proxy', 'password', '') or '').strip()
+
     @staticmethod
-    def PROXY_CHECK() -> bool:
-        """Проверять ли прокси перед использованием"""
-        return False
-    
-    @staticmethod
-    def PROXY() -> str:
+    def PROXY_URL() -> str:
         """
-        Получить прокси строку (если включен)
-        Формат: [login:password@]ip:port
+        Собрать прокси-URL для aiogram.
+        Формат: scheme://[login:password@]ip:port
+        Пустая строка — прокси выключен или не настроен.
         """
-        # Proxy support removed — возвращаем пустую строку
-        return ''
-    
+        if not BotConfig.PROXY_ENABLED():
+            return ''
+
+        ip = BotConfig.PROXY_IP()
+        port = BotConfig.PROXY_PORT()
+        if not ip or not port:
+            return ''
+
+        auth = ''
+        login = BotConfig.PROXY_LOGIN()
+        password = BotConfig.PROXY_PASSWORD()
+        if login:
+            auth = f"{login}:{password}@" if password else f"{login}@"
+
+        return f"{BotConfig.PROXY_TYPE()}://{auth}{ip}:{port}"
+
     @staticmethod
-    def set_proxy(ip: str, port: str, login: str = '', password: str = '', enabled: bool = True, check: bool = False):
+    def set_proxy(ip: str, port: str, login: str = '', password: str = '', enabled: bool = True, proxy_type: str = 'socks5'):
         """Установить прокси"""
-        # Proxy support was removed; this function is a no-op to preserve compatibility
-        return
+        _config_manager.set('Proxy', 'ip', ip)
+        _config_manager.set('Proxy', 'port', port)
+        _config_manager.set('Proxy', 'login', login)
+        _config_manager.set('Proxy', 'password', password)
+        _config_manager.set('Proxy', 'type', proxy_type)
+        _config_manager.set('Proxy', 'enabled', enabled)
     
     # === Хранилище ===
     @staticmethod
@@ -535,6 +593,17 @@ class BotConfig:
         """Текст автоответа на отзыв"""
         return _config_manager.get('AutoResponse', 'reviewResponseText', 'Благодарю за отзыв! Рад был помочь.')
     
+    # === Приветственное сообщение ===
+    @staticmethod
+    def WELCOME_MESSAGE_ENABLED() -> bool:
+        """Отправлять приветствие при первом сообщении в чате"""
+        return _config_manager.get('WelcomeMessage', 'enabled', False)
+
+    @staticmethod
+    def WELCOME_MESSAGE_TEXT() -> str:
+        """Текст приветственного сообщения"""
+        return _config_manager.get('WelcomeMessage', 'text', 'Здравствуйте, $username! Я скоро отвечу на ваше сообщение.')
+
     # === Автообновление ===
     @staticmethod
     def AUTO_UPDATE_ENABLED() -> bool:

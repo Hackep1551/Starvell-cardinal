@@ -13,8 +13,10 @@ from bot.keyboards import (
     get_main_menu_page_2,
     get_order_confirm_response_menu,
     get_review_response_menu,
+    get_welcome_message_menu,
     get_configs_menu,
     get_authorized_users_menu,
+    get_proxy_menu,
     CBT,
 )
 from bot.core.config import BotConfig, get_config_manager
@@ -27,7 +29,13 @@ class EditTextStates(StatesGroup):
     """Состояния для редактирования текстов"""
     waiting_for_order_confirm_text = State()
     waiting_for_review_text = State()
+    waiting_for_welcome_text = State()
     waiting_for_config = State()
+
+
+class ProxyState(StatesGroup):
+    """Состояния для настройки прокси"""
+    waiting_for_proxy = State()
 
 
 # === Вторая страница главного меню ===
@@ -179,6 +187,101 @@ async def process_review_text(message: Message, state: FSMContext):
     await message.answer(
         message_text,
         reply_markup=get_review_response_menu(enabled, text)
+    )
+
+
+# === Приветственное сообщение ===
+
+@router.callback_query(F.data == CBT.WELCOME_MESSAGE)
+async def callback_welcome_message(callback: CallbackQuery):
+    """Меню настройки приветственного сообщения"""
+    await callback.answer()
+
+    enabled = BotConfig.WELCOME_MESSAGE_ENABLED()
+    text = BotConfig.WELCOME_MESSAGE_TEXT()
+
+    message_text = (
+        "👋 <b>Приветственное сообщение</b>\n\n"
+        f"<b>Статус:</b> {'включено ✅' if enabled else 'выключено ❌'}\n\n"
+        f"<b>Текущий текст:</b>\n<i>{text}</i>\n\n"
+        "При первом сообщении покупателя бот автоматически отправит это приветствие.\n\n"
+        "Доступные переменные: <code>$username</code>, <code>$date</code>, <code>$time</code>"
+    )
+
+    await callback.message.edit_text(
+        message_text,
+        reply_markup=get_welcome_message_menu(enabled, text)
+    )
+
+
+@router.callback_query(F.data == CBT.SWITCH_WELCOME_MESSAGE)
+async def callback_switch_welcome_message(callback: CallbackQuery):
+    """Переключить приветственное сообщение"""
+    current = BotConfig.WELCOME_MESSAGE_ENABLED()
+    BotConfig.update(**{"WelcomeMessage.enabled": not current})
+
+    status = "включено" if not current else "выключено"
+    await callback.answer(f"Приветствие {status}", show_alert=False)
+
+    enabled = not current
+    text = BotConfig.WELCOME_MESSAGE_TEXT()
+
+    message_text = (
+        "👋 <b>Приветственное сообщение</b>\n\n"
+        f"<b>Статус:</b> {'включено ✅' if enabled else 'выключено ❌'}\n\n"
+        f"<b>Текущий текст:</b>\n<i>{text}</i>\n\n"
+        "При первом сообщении покупателя бот автоматически отправит это приветствие.\n\n"
+        "Доступные переменные: <code>$username</code>, <code>$date</code>, <code>$time</code>"
+    )
+
+    await callback.message.edit_text(
+        message_text,
+        reply_markup=get_welcome_message_menu(enabled, text)
+    )
+
+
+@router.callback_query(F.data == "edit_welcome_text")
+async def callback_edit_welcome_text(callback: CallbackQuery, state: FSMContext):
+    """Начать редактирование текста приветствия"""
+    await callback.answer()
+
+    await state.set_state(EditTextStates.waiting_for_welcome_text)
+
+    await callback.message.edit_text(
+        "✏️ <b>Изменение текста приветствия</b>\n\n"
+        "Отправьте новый текст сообщения, которое будет отправляться "
+        "покупателю при первом сообщении.\n\n"
+        "Доступные переменные: <code>$username</code>, <code>$date</code>, <code>$time</code>"
+    )
+
+
+@router.message(EditTextStates.waiting_for_welcome_text)
+async def process_welcome_text(message: Message, state: FSMContext):
+    """Обработка нового текста приветствия"""
+    text = message.text.strip()
+
+    if not text or len(text) > 4096:
+        await message.answer(
+            "❌ Текст должен быть от 1 до 4096 символов. Попробуйте ещё раз:"
+        )
+        return
+
+    # Сохраняем
+    BotConfig.update(**{"WelcomeMessage.text": text})
+
+    await state.clear()
+
+    enabled = BotConfig.WELCOME_MESSAGE_ENABLED()
+
+    message_text = (
+        "✅ <b>Текст успешно изменён!</b>\n\n"
+        f"<b>Статус:</b> {'включено ✅' if enabled else 'выключено ❌'}\n\n"
+        f"<b>Новый текст приветствия:</b>\n<i>{text}</i>"
+    )
+
+    await message.answer(
+        message_text,
+        reply_markup=get_welcome_message_menu(enabled, text)
     )
 
 
@@ -337,4 +440,160 @@ async def callback_remove_auth_user(callback: CallbackQuery):
     await callback.message.edit_text(
         message_text,
         reply_markup=get_authorized_users_menu(admin_ids)
+    )
+
+
+# === Прокси ===
+
+def _proxy_menu_text() -> str:
+    enabled = BotConfig.PROXY_ENABLED()
+    ip = BotConfig.PROXY_IP()
+    port = BotConfig.PROXY_PORT()
+    proxy_type = BotConfig.PROXY_TYPE()
+    login = BotConfig.PROXY_LOGIN()
+    status = "включён ✅" if enabled else "выключен ❌"
+    addr = f"{proxy_type}://{ip}:{port}" if ip and port else "не настроен"
+    auth = f"\n<b>Логин:</b> {login}" if login else ""
+    return (
+        "🔒 <b>Настройка прокси</b>\n\n"
+        f"<b>Статус:</b> {status}\n"
+        f"<b>Адрес:</b> <code>{addr}</code>{auth}\n\n"
+        "Чтобы добавить или изменить прокси, нажмите кнопку ниже и введите адрес в формате:\n"
+        "<code>тип://логин:пароль@ip:порт</code>\n"
+        "или <code>тип://ip:порт</code>\n"
+        "Например: <code>socks5://1.2.3.4:1080</code>\n"
+        "или <code>socks5://user:pass@1.2.3.4:1080</code>"
+    )
+
+
+@router.callback_query(F.data == CBT.PROXY)
+async def callback_proxy_menu(callback: CallbackQuery):
+    """Меню прокси"""
+    await callback.answer()
+    enabled = BotConfig.PROXY_ENABLED()
+    ip = BotConfig.PROXY_IP()
+    port = BotConfig.PROXY_PORT()
+    proxy_type = BotConfig.PROXY_TYPE()
+    proxy_set = bool(ip and port)
+    await callback.message.edit_text(
+        _proxy_menu_text(),
+        reply_markup=get_proxy_menu(enabled, proxy_set, proxy_type, ip, port)
+    )
+
+
+@router.callback_query(F.data == CBT.PROXY_ENABLE)
+async def callback_proxy_enable(callback: CallbackQuery):
+    """Включить прокси"""
+    await callback.answer()
+    BotConfig.set_proxy(
+        ip=BotConfig.PROXY_IP(),
+        port=BotConfig.PROXY_PORT(),
+        login=BotConfig.PROXY_LOGIN(),
+        password=BotConfig.PROXY_PASSWORD(),
+        enabled=True,
+        proxy_type=BotConfig.PROXY_TYPE(),
+    )
+    ip = BotConfig.PROXY_IP()
+    port = BotConfig.PROXY_PORT()
+    await callback.message.edit_text(
+        _proxy_menu_text(),
+        reply_markup=get_proxy_menu(True, bool(ip and port), BotConfig.PROXY_TYPE(), ip, port)
+    )
+
+
+@router.callback_query(F.data == CBT.PROXY_DISABLE)
+async def callback_proxy_disable(callback: CallbackQuery):
+    """Выключить прокси"""
+    await callback.answer()
+    BotConfig.set_proxy(
+        ip=BotConfig.PROXY_IP(),
+        port=BotConfig.PROXY_PORT(),
+        login=BotConfig.PROXY_LOGIN(),
+        password=BotConfig.PROXY_PASSWORD(),
+        enabled=False,
+        proxy_type=BotConfig.PROXY_TYPE(),
+    )
+    ip = BotConfig.PROXY_IP()
+    port = BotConfig.PROXY_PORT()
+    await callback.message.edit_text(
+        _proxy_menu_text(),
+        reply_markup=get_proxy_menu(False, bool(ip and port), BotConfig.PROXY_TYPE(), ip, port)
+    )
+
+
+@router.callback_query(F.data == CBT.PROXY_ADD)
+async def callback_proxy_add(callback: CallbackQuery, state: FSMContext):
+    """Начать ввод прокси"""
+    await callback.answer()
+    await state.set_state(ProxyState.waiting_for_proxy)
+    await callback.message.edit_text(
+        "🔒 <b>Добавление прокси</b>\n\n"
+        "Введите прокси в одном из форматов:\n"
+        "<code>socks5://ip:порт</code>\n"
+        "<code>socks4://ip:порт</code>\n"
+        "<code>http://ip:порт</code>\n"
+        "<code>socks5://логин:пароль@ip:порт</code>\n\n"
+        "Для отмены отправьте /cancel"
+    )
+
+
+@router.message(ProxyState.waiting_for_proxy)
+async def process_proxy_input(message: Message, state: FSMContext):
+    """Обработка введённого прокси"""
+    import re
+    text = message.text.strip() if message.text else ""
+
+    if text == "/cancel":
+        await state.clear()
+        enabled = BotConfig.PROXY_ENABLED()
+        ip = BotConfig.PROXY_IP()
+        port = BotConfig.PROXY_PORT()
+        proxy_type = BotConfig.PROXY_TYPE()
+        proxy_set = bool(ip and port)
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        await message.answer(
+            "❌ Отменено.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🔒 К настройкам прокси", callback_data=CBT.PROXY)]
+            ])
+        )
+        return
+
+    pattern = re.compile(
+        r'^(socks5|socks4|http)://'
+        r'(?:([^:@]+):([^@]*)@)?'
+        r'([\w\d\.\-]+):(\d{1,5})$',
+        re.IGNORECASE
+    )
+    m = pattern.match(text)
+    if not m:
+        await message.answer(
+            "❌ Неверный формат. Примеры:\n"
+            "<code>socks5://1.2.3.4:1080</code>\n"
+            "<code>socks5://user:pass@1.2.3.4:1080</code>\n\n"
+            "Попробуйте ещё раз или отправьте /cancel"
+        )
+        return
+
+    proxy_type, login, password, ip, port = m.group(1).lower(), m.group(2) or '', m.group(3) or '', m.group(4), m.group(5)
+
+    BotConfig.set_proxy(
+        ip=ip,
+        port=port,
+        login=login,
+        password=password,
+        enabled=True,
+        proxy_type=proxy_type,
+    )
+    await state.clear()
+
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    await message.answer(
+        f"✅ <b>Прокси сохранён и включён!</b>\n\n"
+        f"<b>Тип:</b> {proxy_type}\n"
+        f"<b>Адрес:</b> <code>{ip}:{port}</code>"
+        + (f"\n<b>Логин:</b> {login}" if login else ""),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔒 К настройкам прокси", callback_data=CBT.PROXY)]
+        ])
     )
