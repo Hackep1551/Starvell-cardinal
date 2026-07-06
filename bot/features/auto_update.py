@@ -248,7 +248,6 @@ class AutoUpdateService:
     async def perform_update(self) -> dict:
         """
         Выполнить обновление (pull из git)
-        Защищённые папки: configs, storage, logs, plugins, docs
         
         Returns:
             dict с результатом: {"success": bool, "message": str, "output": str}
@@ -259,7 +258,6 @@ class AutoUpdateService:
             # Проверяем что мы в git репозитории
             import subprocess
             
-            # Проверяем наличие .git
             if not Path(".git").exists():
                 return {
                     "success": False,
@@ -267,7 +265,6 @@ class AutoUpdateService:
                     "output": "Директория .git не найдена"
                 }
             
-            # Сохраняем текущую ветку
             result = subprocess.run(
                 ["git", "rev-parse", "--abbrev-ref", "HEAD"],
                 capture_output=True,
@@ -284,7 +281,6 @@ class AutoUpdateService:
             
             branch = result.stdout.strip()
             
-            # Проверяем наличие локальных изменений
             status_result = subprocess.run(
                 ["git", "status", "--porcelain"],
                 capture_output=True,
@@ -292,33 +288,65 @@ class AutoUpdateService:
                 timeout=10
             )
             
+            if status_result.returncode != 0:
+                return {
+                    "success": False,
+                    "message": "❌ Не удалось проверить состояние репозитория",
+                    "output": status_result.stderr
+                }
+
             has_local_changes = bool(status_result.stdout.strip())
             stash_created = False
+            stash_restore_attempted = False
+            local_changes_restored = False
             
             if has_local_changes:
                 logger.info("💾 Обнаружены локальные изменения, сохраняю их...")
-                
-                # Сначала сбрасываем version.py к версии из HEAD (если он изменён)
-                subprocess.run(
-                    ["git", "checkout", "HEAD", "--", "version.py"],
-                    capture_output=True,
-                    text=True,
-                    timeout=5
-                )
-                
-                # Теперь сохраняем остальные локальные изменения в stash
+
                 stash_result = subprocess.run(
-                    ["git", "stash", "push", "-m", "Auto-update: temporary stash"],
+                    ["git", "stash", "push", "--include-untracked", "-m", "Auto-update: temporary stash"],
                     capture_output=True,
                     text=True,
                     timeout=10
                 )
                 
-                if stash_result.returncode == 0:
+                stash_output = stash_result.stdout + stash_result.stderr
+                if stash_result.returncode == 0 and "No local changes to save" not in stash_output:
                     stash_created = True
                     logger.info("✅ Локальные изменения сохранены")
+                elif stash_result.returncode == 0:
+                    logger.info("Локальных изменений для stash не найдено")
                 else:
-                    logger.warning(f"⚠️ Не удалось создать stash: {stash_result.stderr}")
+                    return {
+                        "success": False,
+                        "message": "❌ Не удалось сохранить локальные изменения",
+                        "output": stash_result.stdout + stash_result.stderr
+                    }
+
+            def restore_auto_update_stash() -> str:
+                nonlocal stash_created, stash_restore_attempted, local_changes_restored
+
+                if not stash_created or stash_restore_attempted:
+                    return ""
+
+                stash_restore_attempted = True
+                logger.info("♻️ Восстанавливаю локальные изменения...")
+                stash_pop_result = subprocess.run(
+                    ["git", "stash", "pop"],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                stash_output = stash_pop_result.stdout + stash_pop_result.stderr
+
+                if stash_pop_result.returncode == 0:
+                    stash_created = False
+                    local_changes_restored = True
+                    logger.info("✅ Локальные изменения восстановлены")
+                else:
+                    logger.warning(f"⚠️ Не удалось восстановить stash: {stash_pop_result.stderr}")
+
+                return stash_output
             
             # Перед получением обновлений создаём zip-бэкап репозитория и отправляем админам
             try:
@@ -393,7 +421,6 @@ class AutoUpdateService:
             except Exception as e:
                 logger.warning(f"Не удалось создать/отправить бэкап: {e}")
 
-            # Получаем список файлов которые будут удалены
             result = subprocess.run(
                 ["git", "fetch", "origin", branch],
                 capture_output=True,
@@ -408,7 +435,6 @@ class AutoUpdateService:
                     "output": result.stderr
                 }
             
-            # Проверяем какие файлы будут удалены
             result = subprocess.run(
                 ["git", "diff", "--name-status", f"HEAD..origin/{branch}"],
                 capture_output=True,
@@ -419,7 +445,6 @@ class AutoUpdateService:
             deleted_files = []
             modified_files = []
             added_files = []
-            protected_dirs = ["configs/", "storage/", "logs/", "plugins/", "docs/"]
             
             if result.returncode == 0:
                 for line in result.stdout.split('\n'):
@@ -434,20 +459,17 @@ class AutoUpdateService:
                     file_path = parts[1]
                     
                     if status.startswith('D'):
-                        # Проверяем защищённые папки
-                        if any(file_path.startswith(pdir) for pdir in protected_dirs):
-                            deleted_files.append(file_path)
+                        deleted_files.append(file_path)
                     elif status.startswith('M'):
                         modified_files.append(file_path)
                     elif status.startswith('A'):
                         added_files.append(file_path)
             
-            # Логируем изменения
             if modified_files or added_files or deleted_files:
                 logger.info("📝 Изменения в обновлении:")
                 if modified_files:
                     logger.info(f"  ✏️  Изменено файлов: {len(modified_files)}")
-                    for f in modified_files[:5]:  # Показываем первые 5
+                    for f in modified_files[:5]:
                         logger.info(f"      - {f}")
                     if len(modified_files) > 5:
                         logger.info(f"      ... и ещё {len(modified_files) - 5}")
@@ -466,90 +488,37 @@ class AutoUpdateService:
                     if len(deleted_files) > 5:
                         logger.info(f"      ... и ещё {len(deleted_files) - 5}")
             
-            # Если есть удаляемые файлы в защищённых папках - восстанавливаем их после merge
-            restore_needed = len(deleted_files) > 0
-            
-            # Выполняем git merge (без удаления защищённых файлов)
             result = subprocess.run(
-                ["git", "merge", f"origin/{branch}", "--no-commit", "--no-ff"],
+                ["git", "rebase", f"origin/{branch}"],
                 capture_output=True,
                 text=True,
-                timeout=30
+                timeout=60
             )
             
             output = result.stdout + result.stderr
             
-            # Если есть конфликты или ошибки
-            if result.returncode != 0 and "Already up to date" not in output:
-                # Отменяем merge
-                subprocess.run(["git", "merge", "--abort"], capture_output=True)
-                
-                # Восстанавливаем stash если создавали
+            if result.returncode != 0:
+                subprocess.run(["git", "rebase", "--abort"], capture_output=True, text=True, timeout=30)
                 if stash_created:
-                    subprocess.run(["git", "stash", "pop"], capture_output=True)
+                    output += restore_auto_update_stash()
                     
                 return {
                     "success": False,
-                    "message": f"❌ Ошибка при обновлении",
+                    "message": "❌ Не удалось обновиться автоматически. Проверьте конфликтующие изменения вручную.",
                     "output": output
                 }
-            
-            # Восстанавливаем защищённые файлы
-            if restore_needed and deleted_files:
-                for file_path in deleted_files:
-                    # Восстанавливаем файл из HEAD
-                    restore_result = subprocess.run(
-                        ["git", "checkout", "HEAD", "--", file_path],
-                        capture_output=True,
-                        text=True,
-                        timeout=5
-                    )
-                    if restore_result.returncode == 0:
-                        logger.info(f"🛡️ Защищён файл: {file_path}")
-            
-            # Завершаем merge
-            if "Already up to date" not in output:
-                commit_result = subprocess.run(
-                    ["git", "commit", "--no-edit", "-m", "Auto-update: merge with protected files"],
-                    capture_output=True,
-                    text=True,
-                    timeout=10
-                )
-                
-                if commit_result.returncode != 0:
-                    # Если нечего коммитить - это нормально
-                    if "nothing to commit" not in commit_result.stdout:
-                        logger.warning(f"Предупреждение при коммите: {commit_result.stderr}")
-            
-            # Восстанавливаем локальные изменения из stash
+
             if stash_created:
-                logger.info("♻️ Восстанавливаю локальные изменения...")
-                stash_pop_result = subprocess.run(
-                    ["git", "stash", "pop"],
-                    capture_output=True,
-                    text=True,
-                    timeout=10
-                )
-                
-                if stash_pop_result.returncode == 0:
-                    logger.info("✅ Локальные изменения восстановлены")
-                else:
-                    logger.warning(f"⚠️ Не удалось восстановить stash: {stash_pop_result.stderr}")
-            
-            # Проверяем что файлы обновились
-            if "Already up to date" in output or "Already up-to-date" in output:
-                # Восстанавливаем stash если был создан
+                stash_output = restore_auto_update_stash()
+                output += stash_output
                 if stash_created:
-                    logger.info("♻️ Восстанавливаю локальные изменения...")
-                    stash_pop_result = subprocess.run(
-                        ["git", "stash", "pop"],
-                        capture_output=True,
-                        text=True,
-                        timeout=10
-                    )
-                    if stash_pop_result.returncode == 0:
-                        logger.info("✅ Локальные изменения восстановлены")
-                
+                    return {
+                        "success": False,
+                        "message": "❌ Обновление применено, но локальные изменения требуют ручного восстановления из stash",
+                        "output": output
+                    }
+
+            if "Current branch" in output and "is up to date" in output:
                 return {
                     "success": True,
                     "message": "✅ Уже установлена последняя версия",
@@ -558,10 +527,8 @@ class AutoUpdateService:
             
             logger.info("✅ Обновление успешно выполнено!")
             
-            # Сохраняем старую версию для сообщения
             old_version = self.current_version
             
-            # Логируем итоговую статистику изменений
             total_changes = len(modified_files) + len(added_files)
             if total_changes > 0:
                 logger.info(f"📊 Итого изменений: {total_changes} файлов")
@@ -570,26 +537,18 @@ class AutoUpdateService:
                 if added_files:
                     logger.info(f"   ➕ Добавлено: {len(added_files)}")
                 if deleted_files:
-                    logger.info(f"   🛡️  Защищено: {len(deleted_files)}")
+                    logger.info(f"   🗑️  Удалено: {len(deleted_files)}")
             
-            # Формируем сообщение о защищённых файлах
-            protected_msg = ""
-            if restore_needed:
-                protected_msg = f"\n🛡️ Защищено файлов: {len(deleted_files)}"
-            
-            # Информация о восстановленных локальных изменениях
             local_changes_msg = ""
-            if stash_created:
-                local_changes_msg = "\n♻️ Локальные изменения сохранены"
+            if local_changes_restored:
+                local_changes_msg = "\n♻️ Локальные изменения восстановлены"
             
-            # Перезагружаем version модуль
             import importlib
             import version as version_module
             importlib.reload(version_module)
             
             from version import VERSION as NEW_VERSION
             
-            # Обновляем текущую версию и сбрасываем флаги
             self.current_version = NEW_VERSION
             self.update_available = False
             self._notification_sent = False
@@ -597,7 +556,7 @@ class AutoUpdateService:
             return {
                 "success": True,
                 "message": f"✅ Обновление выполнено!\n"
-                          f"Версия: {old_version} → {NEW_VERSION}{protected_msg}{local_changes_msg}",
+                          f"Версия: {old_version} → {NEW_VERSION}{local_changes_msg}",
                 "output": output
             }
             

@@ -246,7 +246,9 @@ else:
     'lot_name': str,              # Название лота
     'lot_description': str,       # Описание лота
     'status': str,                # Статус: CREATED, COMPLETED, etc.
-    'chat_id': str                # UUID чата (пусто если не найден)
+    'chat_id': str,               # UUID чата (пусто если не найден)
+    'source': str,                # polling или socket
+    'socket_event': dict          # Raw Socket.IO событие или None
 }
 ```
 
@@ -259,7 +261,13 @@ else:
     'lot_name': 'АВТОНАКРУТКА ПРОСМОТРОВ TELEGRAM',
     'lot_description': '💜 Минимальный заказ: 50\nID:5001\n#Quan:1',
     'status': 'CREATED',
-    'chat_id': '019b8386-1e8f-f31d-9e66-b05331f70af6'
+    'chat_id': '019b8386-1e8f-f31d-9e66-b05331f70af6',
+    'source': 'socket',
+    'socket_event': {
+        'namespace': '/user-notifications',
+        'event': 'order',
+        'data': {...}
+    }
 }
 ```
 
@@ -274,7 +282,9 @@ else:
     'chat_id': str,       # UUID чата
     'author': str,        # ID автора (buyerId как строка)
     'content': str,       # Текст сообщения
-    'message_id': str     # UUID сообщения
+    'message_id': str,    # UUID сообщения
+    'source': str,        # polling или socket
+    'socket_event': dict  # Raw Socket.IO событие или None
 }
 ```
 
@@ -284,7 +294,13 @@ else:
     'chat_id': '019b8386-1e8f-f31d-9e66-b05331f70af6',
     'author': '142989',
     'content': 'https://t.me/channel/123',
-    'message_id': '019b9803-0ef6-eb89-eb81-0e72b7c2ff42'
+    'message_id': '019b9803-0ef6-eb89-eb81-0e72b7c2ff42',
+    'source': 'socket',
+    'socket_event': {
+        'namespace': '/chats',
+        'event': 'message',
+        'data': {...}
+    }
 }
 ```
 

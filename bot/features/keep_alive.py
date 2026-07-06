@@ -3,6 +3,8 @@
 """
 
 import asyncio
+import inspect
+import json
 import logging
 from typing import Optional
 
@@ -47,6 +49,10 @@ class KeepAliveService:
         self._socket_enabled = True
         self._socket_fail_count = 0
         self._socket_stale_after = 45  # Секунд без пакетов = сокет мёртв
+        self._event_handler = None
+
+    def set_event_handler(self, handler):
+        self._event_handler = handler
 
     async def start(self):
         """Запустить сервис"""
@@ -154,6 +160,7 @@ class KeepAliveService:
                     elif payload.startswith(("41", "1")):
                         break
                     else:
+                        await self._handle_socket_payload(payload)
                         if online_confirmed:
                             self._mark_socket_alive()
 
@@ -183,6 +190,54 @@ class KeepAliveService:
         """Отметить живой пакет от сокета"""
         self._last_socket_success = asyncio.get_event_loop().time()
         self._socket_fail_count = 0
+
+    async def _handle_socket_payload(self, payload: str):
+        if not self._event_handler:
+            return
+
+        event = self._parse_socket_event(payload)
+        if not event:
+            return
+
+        try:
+            result = self._event_handler(event)
+            if inspect.isawaitable(result):
+                await result
+        except Exception as e:
+            logger.error(f"Ошибка обработки Socket.IO события: {e}", exc_info=True)
+
+    def _parse_socket_event(self, payload: str) -> Optional[dict]:
+        if not payload.startswith("42"):
+            return None
+
+        body = payload[2:]
+        namespace = "/"
+
+        if body.startswith("/"):
+            comma_idx = body.find(",")
+            if comma_idx < 0:
+                return None
+            namespace = body[:comma_idx]
+            body = body[comma_idx + 1:]
+
+        try:
+            decoded = json.loads(body)
+        except json.JSONDecodeError:
+            return None
+
+        if not isinstance(decoded, list) or not decoded:
+            return None
+
+        event_name = decoded[0] if isinstance(decoded[0], str) else ""
+        data = decoded[1] if len(decoded) > 1 else None
+
+        return {
+            "source": "socket",
+            "namespace": namespace,
+            "event": event_name,
+            "data": data,
+            "raw": payload,
+        }
 
     @staticmethod
     def _parse_namespace(payload: str) -> Optional[str]:

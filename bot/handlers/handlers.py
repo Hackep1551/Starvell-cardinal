@@ -4,6 +4,7 @@
 
 import hashlib
 import asyncio
+import time
 from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
@@ -76,6 +77,49 @@ class AutoTicketState(StatesGroup):
 
 
 # === Функции авторизации ===
+
+AUTH_MAX_FAILED_ATTEMPTS = 5
+AUTH_ATTEMPT_WINDOW_SECONDS = 300
+AUTH_LOCKOUT_SECONDS = 900
+_auth_attempts = {}
+
+
+def _auth_lock_remaining(user_id: int) -> int:
+    """Сколько секунд осталось до следующей попытки авторизации."""
+    record = _auth_attempts.get(user_id)
+    if not record:
+        return 0
+
+    now = time.monotonic()
+    locked_until = record.get("locked_until", 0)
+    if locked_until > now:
+        return int(locked_until - now) + 1
+
+    if locked_until:
+        _auth_attempts.pop(user_id, None)
+    return 0
+
+
+def _record_failed_auth(user_id: int) -> int:
+    """Записать неудачную попытку и вернуть оставшееся время блокировки."""
+    now = time.monotonic()
+    record = _auth_attempts.get(user_id)
+
+    if not record or now - record.get("first_attempt", now) > AUTH_ATTEMPT_WINDOW_SECONDS:
+        record = {"count": 0, "first_attempt": now, "locked_until": 0}
+
+    record["count"] += 1
+    if record["count"] >= AUTH_MAX_FAILED_ATTEMPTS:
+        record["locked_until"] = now + AUTH_LOCKOUT_SECONDS
+
+    _auth_attempts[user_id] = record
+    return _auth_lock_remaining(user_id)
+
+
+def _clear_failed_auth(user_id: int):
+    """Сбросить счётчик после успешной авторизации."""
+    _auth_attempts.pop(user_id, None)
+
 
 def hash_password(password: str) -> str:
     """Хеширование пароля"""
@@ -699,19 +743,29 @@ async def cmd_restart(message: Message, **kwargs):
 @router.message(AuthState.waiting_for_password)
 async def process_password(message: Message, state: FSMContext):
     """Обработка ввода пароля"""
-    password = message.text
-    password_hash = hash_password(password)
-    stored_hash = BotConfig.PASSWORD_HASH()
+    user_id = message.from_user.id
+    lock_remaining = _auth_lock_remaining(user_id)
     
     # Удаляем сообщение с паролем
     try:
         await message.delete()
     except:
         pass
+
+    if lock_remaining:
+        await message.answer(
+            f"⏳ Слишком много неверных попыток. Попробуйте снова через {lock_remaining} сек."
+        )
+        return
+
+    password = message.text or ""
+    password_hash = hash_password(password)
+    stored_hash = BotConfig.PASSWORD_HASH()
     
     if password_hash == stored_hash:
         # Пароль верный - авторизуем пользователя
-        await authorize_user(message.from_user.id)
+        _clear_failed_auth(user_id)
+        await authorize_user(user_id)
         await state.clear()
         
         await message.answer(
@@ -720,7 +774,13 @@ async def process_password(message: Message, state: FSMContext):
         )
     else:
         # Пароль неверный
-        await message.answer("❌ Неверный пароль. Попробуйте ещё раз:")
+        lock_remaining = _record_failed_auth(user_id)
+        if lock_remaining:
+            await message.answer(
+                f"❌ Неверный пароль. Слишком много попыток, повторите через {lock_remaining} сек."
+            )
+        else:
+            await message.answer("❌ Неверный пароль. Попробуйте ещё раз:")
 
 
 # === Callback обработчики ===

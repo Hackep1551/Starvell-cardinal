@@ -179,16 +179,16 @@ Starvell-cardinal/
 """
 
 # === МЕТАДАННЫЕ ===
-PLUGIN_NAME = "Мой плагин"
-PLUGIN_VERSION = "1.0.0"
-PLUGIN_DESCRIPTION = "Описание моего плагина"
-PLUGIN_AUTHOR = "Ваше имя"
-PLUGIN_UUID = "my-plugin-uuid-12345"
+NAME = "Мой плагин"
+VERSION = "1.0.0"
+DESCRIPTION = "Описание моего плагина"
+AUTHOR = "Ваше имя"
+UUID = "123e4567-e89b-42d3-a456-426614174000"
 
 # === ФУНКЦИИ-ОБРАБОТЧИКИ ===
 def on_init():
     """Вызывается при загрузке плагина"""
-    print(f"✅ {PLUGIN_NAME} загружен!")
+    print(f"✅ {NAME} загружен!")
 
 async def on_new_message(message_data, *args):
     """Вызывается при получении нового сообщения"""
@@ -201,11 +201,12 @@ BIND_TO_NEW_MESSAGE = [on_new_message]
 
 ### Доступные события
 
-- **`BIND_TO_PRE_INIT`** — перед инициализацией бота
 - **`BIND_TO_INIT`** — после инициализации бота
+- **`BIND_TO_START`** — перед запуском polling
+- **`BIND_TO_STOP`** — перед остановкой бота
 - **`BIND_TO_DELETE`** — при удалении плагина
-- **`BIND_TO_NEW_MESSAGE`** — при получении нового сообщения
-- **`BIND_TO_NEW_ORDER`** — при получении нового заказа
+- **`BIND_TO_NEW_MESSAGE`** — при получении нового сообщения через polling или Socket.IO
+- **`BIND_TO_NEW_ORDER`** — при получении нового заказа через polling или Socket.IO
 
 Полная документация: [PLUGINS_API.md](docs/PLUGINS_API.md)
 

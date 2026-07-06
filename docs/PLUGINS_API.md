@@ -34,7 +34,7 @@ NAME = "Мой плагин"
 VERSION = "1.0.0"
 DESCRIPTION = "Описание плагина"
 AUTHOR = "Ваше имя"
-UUID = "unique-plugin-id-12345"  # Уникальный ID
+UUID = "123e4567-e89b-42d3-a456-426614174000"  # Уникальный UUID v4
 
 # === ФУНКЦИИ-ОБРАБОТЧИКИ ===
 def on_init():
@@ -42,7 +42,7 @@ def on_init():
     print(f"Плагин {NAME} загружен!")
 
 # === ПРИВЯЗКА К СОБЫТИЯМ ===
-BIND_TO_PRE_INIT = [on_init]
+BIND_TO_INIT = [on_init]
 ```
 
 ## Обязательные переменные
@@ -58,21 +58,21 @@ BIND_TO_PRE_INIT = [on_init]
 
 ### Жизненный цикл
 
-#### `BIND_TO_PRE_INIT`
-Вызывается **перед** инициализацией бота.
-
-```python
-def on_pre_init():
-    print("Бот ещё не запущен")
-
-BIND_TO_PRE_INIT = [on_pre_init]
-```
-
 #### `BIND_TO_INIT`
 Вызывается **после** инициализации бота.
 
 ```python
 async def on_init(bot, starvell, db, plugin_manager):
+    print("Бот инициализирован")
+
+BIND_TO_INIT = [on_init]
+```
+
+#### `BIND_TO_START`
+Вызывается **перед запуском polling**.
+
+```python
+async def on_start(bot, starvell, db, plugin_manager):
     """
     Args:
         bot: Объект бота Aiogram (Bot)
@@ -80,13 +80,13 @@ async def on_init(bot, starvell, db, plugin_manager):
         db: Database для работы с хранилищем
         plugin_manager: PluginManager для управления плагинами
     """
-    print("Бот запущен!")
+    print("Polling скоро будет запущен")
     
     # Пример: получить список заказов
     orders = await starvell.get_orders()
     print(f"Активных заказов: {len(orders)}")
 
-BIND_TO_INIT = [on_init]
+BIND_TO_START = [on_start]
 ```
 
 #### `BIND_TO_DELETE`
@@ -102,7 +102,7 @@ BIND_TO_DELETE = [on_delete]
 ### События бота
 
 #### `BIND_TO_NEW_MESSAGE`
-Вызывается при получении нового сообщения.
+Вызывается при получении нового сообщения. Событие может прийти через HTTP polling или через Socket.IO realtime-триггер.
 
 ```python
 async def on_new_message(message_data: dict, starvell_service=None, *args, **kwargs):
@@ -116,7 +116,9 @@ async def on_new_message(message_data: dict, starvell_service=None, *args, **kwa
         'chat_id': str,       # ID чата (UUID)
         'author': str,        # ID автора сообщения (числовой, как строка)
         'content': str,       # Текст сообщения
-        'message_id': str     # ID сообщения (UUID)
+        'message_id': str,    # ID сообщения (UUID)
+        'source': str,        # "polling" или "socket"
+        'socket_event': dict  # Raw Socket.IO событие или None
     }
     
     Пример:
@@ -124,7 +126,13 @@ async def on_new_message(message_data: dict, starvell_service=None, *args, **kwa
         'chat_id': '019b8386-1e8f-f31d-9e66-b05331f70af6',
         'author': '142989',
         'content': 'https://t.me/channel/123',
-        'message_id': '019b9803-0ef6-eb89-eb81-0e72b7c2ff42'
+        'message_id': '019b9803-0ef6-eb89-eb81-0e72b7c2ff42',
+        'source': 'socket',
+        'socket_event': {
+            'namespace': '/chats',
+            'event': 'message',
+            'data': {...}
+        }
     }
     """
     print(f"Новое сообщение от {message_data['author']}: {message_data['content']}")
@@ -140,7 +148,7 @@ BIND_TO_NEW_MESSAGE = [on_new_message]
 ```
 
 #### `BIND_TO_NEW_ORDER`
-Вызывается при получении нового заказа.
+Вызывается при получении нового заказа. Событие может прийти через HTTP polling или через Socket.IO realtime-триггер.
 
 ```python
 async def on_new_order(order_data: dict, starvell_service=None, *args, **kwargs):
@@ -157,7 +165,9 @@ async def on_new_order(order_data: dict, starvell_service=None, *args, **kwargs)
         'lot_name': str,              # Название лота
         'lot_description': str,       # Описание лота
         'status': str,                # Статус заказа (CREATED, COMPLETED, etc.)
-        'chat_id': str                # ID чата с покупателем (пусто если не найден)
+        'chat_id': str,               # ID чата с покупателем (пусто если не найден)
+        'source': str,                # "polling" или "socket"
+        'socket_event': dict          # Raw Socket.IO событие или None
     }
     
     Пример:
@@ -168,7 +178,13 @@ async def on_new_order(order_data: dict, starvell_service=None, *args, **kwargs)
         'lot_name': 'АВТОНАКРУТКА ПРОСМОТРОВ TELEGRAM',
         'lot_description': '💜 Минимальный заказ: 50...',
         'status': 'CREATED',
-        'chat_id': '019b8386-1e8f-f31d-9e66-b05331f70af6'
+        'chat_id': '019b8386-1e8f-f31d-9e66-b05331f70af6',
+        'source': 'socket',
+        'socket_event': {
+            'namespace': '/user-notifications',
+            'event': 'order',
+            'data': {...}
+        }
     }
     """
     print(f"📦 Новый заказ #{order_data['id']} от {order_data['buyer']}")

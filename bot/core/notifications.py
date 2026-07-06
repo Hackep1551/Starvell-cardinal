@@ -227,7 +227,9 @@ class NotificationManager:
         author: str,
         content: str,
         message_id: Optional[str] = None,
-        author_nickname: Optional[str] = None
+        author_nickname: Optional[str] = None,
+        source: str = "polling",
+        socket_event: Optional[Dict[str, Any]] = None
     ):
         """Уведомление о новом сообщении"""
         from bot.keyboards.keyboards import get_select_template_menu
@@ -302,7 +304,9 @@ class NotificationManager:
             chat_id, 
             display_name,  # Уже содержит nickname или ID
             content, 
-            message_id
+            message_id,
+            source=source,
+            socket_event=socket_event
         )
     
     async def notify_support_message(
@@ -312,7 +316,9 @@ class NotificationManager:
         content: str,
         message_id: Optional[str] = None,
         author_nickname: Optional[str] = None,
-        author_roles: Optional[List[str]] = None
+        author_roles: Optional[List[str]] = None,
+        source: str = "polling",
+        socket_event: Optional[Dict[str, Any]] = None
     ):
         """Уведомление о сообщении от поддержки/модерации"""
         from bot.keyboards.keyboards import get_select_template_menu
@@ -392,6 +398,15 @@ class NotificationManager:
             message,
             keyboard=keyboard
         )
+
+        await self._run_plugin_handlers_for_new_message(
+            chat_id,
+            display_name,
+            content,
+            message_id,
+            source=source,
+            socket_event=socket_event
+        )
     
     async def notify_new_order(
         self,
@@ -401,7 +416,9 @@ class NotificationManager:
         amount: float,
         lot_name: str,
         status: str = "CREATED",
-        order_data: dict = None
+        order_data: dict = None,
+        source: str = "polling",
+        socket_event: Optional[Dict[str, Any]] = None
     ):
         """Уведомление о новом заказе"""
         from bot.keyboards.keyboards import get_select_template_menu
@@ -482,7 +499,7 @@ class NotificationManager:
         )
         
         # Вызываем хэндлеры плагинов для новых заказов
-        await self._run_plugin_handlers_for_new_order(order_data)
+        await self._run_plugin_handlers_for_new_order(order_data, source=source, socket_event=socket_event)
 
     async def notify_lots_raised(
         self,
@@ -603,7 +620,7 @@ class NotificationManager:
             force=True
         )
     
-    async def _run_plugin_handlers_for_new_order(self, order_data: dict):
+    async def _run_plugin_handlers_for_new_order(self, order_data: dict, source: str = "polling", socket_event: Optional[Dict[str, Any]] = None):
         """Вызов хэндлеров плагинов для новых заказов"""
         if not self.plugin_manager or not order_data:
             return
@@ -616,7 +633,9 @@ class NotificationManager:
             'lot_name': '',
             'lot_description': '',
             'status': order_data.get('status', 'CREATED'),
-            'chat_id': ''  # Добавляем chat_id покупателя
+            'chat_id': '',
+            'source': source,
+            'socket_event': socket_event,
         }
         
         # Получаем имя покупателя и chat_id
@@ -685,7 +704,15 @@ class NotificationManager:
             except Exception as e:
                 logger.error(f"Ошибка выполнения хэндлера плагина {handler.__name__}: {e}", exc_info=True)
     
-    async def _run_plugin_handlers_for_new_message(self, chat_id: str, author: str, content: str, message_id: Optional[str] = None):
+    async def _run_plugin_handlers_for_new_message(
+        self,
+        chat_id: str,
+        author: str,
+        content: str,
+        message_id: Optional[str] = None,
+        source: str = "polling",
+        socket_event: Optional[Dict[str, Any]] = None
+    ):
         """Вызов хэндлеров плагинов для новых сообщений"""
         if not self.plugin_manager:
             return
@@ -695,7 +722,9 @@ class NotificationManager:
             'chat_id': chat_id,
             'author': author,
             'content': content,
-            'message_id': message_id or ''
+            'message_id': message_id or '',
+            'source': source,
+            'socket_event': socket_event,
         }
         
         # Вызываем хэндлеры плагинов асинхронно

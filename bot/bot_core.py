@@ -222,6 +222,7 @@ async def main():
     
     # Фоновые задачи
     tasks = BackgroundTasks(bot, starvell, db, notifications, auto_response)
+    keep_alive.set_event_handler(tasks.handle_socket_event)
     tasks.start()
     
     # Уведомляем админов о запуске

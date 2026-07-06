@@ -4,6 +4,7 @@
 
 import asyncio
 import logging
+import time
 from datetime import datetime
 from aiogram import Bot
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -38,6 +39,10 @@ class BackgroundTasks:
         self._auto_ticket_first_run_done = False  # Флаг первого запуска авто-тикетов
         self._my_user_id: str = ""  # Заполняется при первой проверке сообщений
         self._custom_commands_cache: tuple = (0.0, None)  # (mtime файла, данные)
+        self._socket_message_lock = asyncio.Lock()
+        self._socket_order_lock = asyncio.Lock()
+        self._last_socket_message_check = 0.0
+        self._last_socket_order_check = 0.0
         
     def start(self):
         """Запустить фоновые задачи"""
@@ -119,7 +124,7 @@ class BackgroundTasks:
         try:
             # ВСЕГДА проверяем сообщения (для плагинов и кастомных команд)
             # Уведомления будут отправлены только если включены (проверка внутри notify_new_message)
-            await self._check_new_messages()
+            await self._check_new_messages(source="polling")
                     
         except Exception as e:
             logger.error(f"Ошибка при проверке сообщений: {e}", exc_info=True)
@@ -129,12 +134,40 @@ class BackgroundTasks:
         try:
             # ВСЕГДА проверяем заказы (для плагинов)
             # Уведомления будут отправлены только если включены (проверка внутри notify_new_order)
-            await self._check_new_orders()
+            await self._check_new_orders(source="polling")
                     
         except Exception as e:
             logger.error(f"Ошибка при проверке заказов: {e}", exc_info=True)
+
+    async def handle_socket_event(self, event: dict):
+        namespace = str(event.get("namespace") or "")
+        event_name = str(event.get("event") or "").lower()
+        raw = str(event.get("raw") or "")
+        text = f"{namespace} {event_name} {raw}".lower()
+
+        if namespace == "/chats" or any(token in text for token in ("message", "chat")):
+            await self._check_new_messages_from_socket(event)
+
+        if namespace == "/user-notifications" or any(token in text for token in ("order", "sell", "purchase")):
+            await self._check_new_orders_from_socket(event)
+
+    async def _check_new_messages_from_socket(self, event: dict):
+        async with self._socket_message_lock:
+            now = time.monotonic()
+            if now - self._last_socket_message_check < 1.0:
+                return
+            self._last_socket_message_check = now
+            await self._check_new_messages(source="socket", socket_event=event)
+
+    async def _check_new_orders_from_socket(self, event: dict):
+        async with self._socket_order_lock:
+            now = time.monotonic()
+            if now - self._last_socket_order_check < 1.0:
+                return
+            self._last_socket_order_check = now
+            await self._check_new_orders(source="socket", socket_event=event)
             
-    async def _check_new_messages(self):
+    async def _check_new_messages(self, source: str = "polling", socket_event: dict = None):
         """Проверка новых сообщений"""
         try:
             new_messages = await self.starvell.check_new_messages()
@@ -214,7 +247,9 @@ class BackgroundTasks:
                         content=content,
                         message_id=str(message_id) if message_id else None,
                         author_nickname=author_username,
-                        author_roles=author_roles
+                        author_roles=author_roles,
+                        source=source,
+                        socket_event=socket_event
                     )
                 else:
                     # Обычное уведомление о новом сообщении
@@ -223,7 +258,9 @@ class BackgroundTasks:
                         author=str(author_id),
                         content=content,
                         message_id=str(message_id) if message_id else None,
-                        author_nickname=author_username  
+                        author_nickname=author_username,
+                        source=source,
+                        socket_event=socket_event
                     )
                 
                 # Запоминаем это сообщение
@@ -250,7 +287,7 @@ class BackgroundTasks:
         except Exception as e:
             logger.error(f"Ошибка при проверке новых сообщений: {e}", exc_info=True)
             
-    async def _check_new_orders(self):
+    async def _check_new_orders(self, source: str = "polling", socket_event: dict = None):
         """Проверка новых заказов"""
         try:
             new_orders = await self.starvell.check_new_orders()
@@ -347,7 +384,9 @@ class BackgroundTasks:
                     amount=float(amount),
                     lot_name=lot_name,
                     status=status,
-                    order_data=order
+                    order_data=order,
+                    source=source,
+                    socket_event=socket_event
                 )
                 
                 # Логируем с полными данными для отладки

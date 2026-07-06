@@ -143,22 +143,18 @@ class StarAPI:
             dict: Данные профиля (nickname, name, id и др.) или None если не найден
         """
         try:
-            # Используем URL вида https://starvell.com/_next/data/{build_id}/user/{user_id}.json
-            data = await self._get_next_data(f"user/{user_id}.json")
-            page_props = data.get("pageProps", {})
-            
-            # Извлекаем данные пользователя
-            user_data = page_props.get("user")
-            if user_data:
-                return {
-                    "id": user_data.get("id"),
-                    "nickname": user_data.get("nickname") or user_data.get("name"),
-                    "name": user_data.get("name"),
-                    "username": user_data.get("username"),
-                    "avatar": user_data.get("avatar"),
-                }
-            
-            return None
+            page_props = await self._get_user_page_props(user_id)
+            user_data = self._extract_profile_user(page_props)
+            if not user_data:
+                return None
+
+            return {
+                "id": user_data.get("id"),
+                "nickname": user_data.get("nickname") or user_data.get("name") or user_data.get("username"),
+                "name": user_data.get("name"),
+                "username": user_data.get("username"),
+                "avatar": user_data.get("avatar"),
+            }
         except Exception as e:
             logger.debug(f"Не удалось получить профиль пользователя {user_id}: {e}")
             return None
@@ -185,14 +181,25 @@ class StarAPI:
         Returns:
             list: Список сообщений
         """
-        data = await self.session.post_json(
-            f"{self.config.API_URL}/messages/list",
-            data={"chatId": chat_id, "limit": limit},
-            referer=f"{self.config.BASE_URL}/chat",
-            retry=True,  # read-only, повтор безопасен
-        )
-        
-        return data if isinstance(data, list) else []
+        try:
+            data = await self.session.post_json(
+                f"{self.config.API_URL}/messages/list",
+                data={"chatId": chat_id, "limit": limit},
+                referer=f"{self.config.BASE_URL}/chat",
+                retry=True,
+            )
+
+            return data if isinstance(data, list) else []
+        except NotFoundError:
+            data = await self._get_next_data(
+                f"chat/{chat_id}.json",
+                params=f"?chat_id={chat_id}",
+            )
+            active_chat = data.get("pageProps", {}).get("activeChat") or {}
+            last_message = active_chat.get("lastMessage")
+            if isinstance(last_message, dict):
+                return [last_message]
+            return []
         
     async def send_message(self, chat_id: str, content: str) -> Dict[str, Any]:
         """
@@ -544,17 +551,59 @@ class StarAPI:
         
     # ==================== Пользователи ====================
 
-    async def _get_user_page_props(self, user_id: int) -> dict:
+    async def _resolve_profile_slug(self, user_id) -> Optional[str]:
+        value = str(user_id or "").strip()
+        if not value:
+            return None
+
+        if not value.isdigit():
+            return value
+
+        try:
+            info = await self.get_user_info()
+            user = info.get("user") or {}
+            if str(user.get("id") or "") == value:
+                return user.get("username") or user.get("nickname") or user.get("name") or value
+        except Exception as e:
+            logger.debug(f"Не удалось определить username для пользователя {value}: {e}")
+
+        return value
+
+    @staticmethod
+    def _extract_profile_user(page_props: dict) -> Optional[dict]:
+        for key in ("user", "profile", "profileUser", "seller", "currentUser"):
+            value = page_props.get(key)
+            if isinstance(value, dict):
+                return value
+
+        if page_props.get("id") or page_props.get("username"):
+            return page_props
+
+        return None
+
+    async def _get_user_page_props(self, user_id) -> dict:
         """
         Получить pageProps профиля пользователя.
 
         Сначала пробуем Next.js Data API (лёгкий JSON, QRATOR к нему лояльнее),
         HTML-страница профиля — только как запасной вариант.
         """
-        attempts = [
+        profile_slug = await self._resolve_profile_slug(user_id)
+        if profile_slug:
+            profile_slug = str(profile_slug).strip().lower()
+        attempts = []
+
+        if profile_slug:
+            attempts.extend([
+                (f"profile/{profile_slug}.json", ""),
+                (f"profile/{profile_slug}.json", f"?username={profile_slug}"),
+                (f"profile/{profile_slug}.json", f"?slug={profile_slug}"),
+            ])
+
+        attempts.extend([
             (f"users/{user_id}.json", f"?user_id={user_id}"),
             (f"user/{user_id}.json", f"?user_id={user_id}"),
-        ]
+        ])
 
         last_error = None
         for path, params in attempts:
@@ -567,11 +616,15 @@ class StarAPI:
                 last_error = e
                 logger.debug(f"Data API {path} не сработал: {e}")
 
-        # Fallback: HTML-страница профиля
-        logger.debug(f"🔍 Запрашиваю HTML-страницу пользователя {user_id}...")
+        if not profile_slug:
+            if last_error:
+                raise last_error
+            raise NotFoundError(f"Профиль пользователя не найден: {user_id}")
+
+        logger.debug(f"🔍 Запрашиваю HTML-страницу профиля {profile_slug}...")
         try:
             html = await self.session.get_text(
-                f"{self.config.BASE_URL}/users/{user_id}",
+                f"{self.config.BASE_URL}/profile/{profile_slug}",
                 headers={
                     "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                     "cache-control": "max-age=0",
@@ -581,7 +634,7 @@ class StarAPI:
             data = extract_next_data(html)
             return data.get("props", {}).get("pageProps", {})
         except Exception as e:
-            logger.warning(f"⚠️ Не удалось получить профиль пользователя {user_id}: {e}")
+            logger.warning(f"⚠️ Не удалось получить профиль пользователя {user_id} ({profile_slug}): {e}")
             if last_error:
                 raise last_error
             raise
