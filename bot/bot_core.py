@@ -26,6 +26,7 @@ from bot.features.auto_raise import AutoRaiseService
 from bot.features.auto_update import AutoUpdateService
 from bot.features.keep_alive import KeepAliveService
 from bot.features.auto_response import AutoResponseService
+from bot.features.privacy_offers import PrivacyOffersService
 from bot.plugins import PluginManager, init_plugins_cp
 
 
@@ -133,6 +134,8 @@ async def main():
     
     # Сервис автоответов
     auto_response = AutoResponseService(starvell, db)
+
+    privacy_offers = PrivacyOffersService(starvell)
     
     # Сервис авто-тикетов
     from bot.features.autoticket import init_autoticket_service
@@ -143,6 +146,7 @@ async def main():
     # Менеджер плагинов
     plugin_manager = PluginManager()
     plugin_manager.load_plugins()
+    plugin_manager.set_runtime(bot=bot, starvell=starvell, db=db, notifications=notifications)
     
     # Устанавливаем plugin_manager в notifications для вызова хэндлеров
     notifications.plugin_manager = plugin_manager
@@ -163,8 +167,10 @@ async def main():
         await auto_update.start()
         await keep_alive.start()
         await auto_response.start()
+        await privacy_offers.start()
         
-        # Запускаем хэндлеры инициализации плагинов
+        await plugin_manager.setup_plugins()
+        await plugin_manager.emit("bot.init", {"user": None}, source="core")
         await plugin_manager.run_handlers(plugin_manager.init_handlers, bot, starvell, db, plugin_manager)
         
         # Проверяем авторизацию
@@ -190,6 +196,7 @@ async def main():
         logger.error(f"Ошибка при подключении к Starvell: {e}")
         logger.exception("Детальная информация об ошибке:")
         await auto_response.stop()
+        await privacy_offers.stop()
         await keep_alive.stop()
         await auto_update.stop()
         await auto_raise.stop()
@@ -215,6 +222,7 @@ async def main():
         "auto_raise": auto_raise,
         "auto_update": auto_update,
         "auto_response": auto_response,
+        "privacy_offers": privacy_offers,
         "keep_alive": keep_alive,
         "autoticket_service": autoticket_service,
         "plugin_manager": plugin_manager,
@@ -258,6 +266,7 @@ async def main():
             log_event("bot_started", f"user={user.get('username')} id={user.get('id')} time={current_time}")
     
     # Запускаем хэндлеры старта плагинов
+    await plugin_manager.emit("bot.start", {"user": user}, source="core")
     await plugin_manager.run_handlers(plugin_manager.start_handlers, bot, starvell, db, plugin_manager)
     
     try:
@@ -268,9 +277,11 @@ async def main():
         logger.info("Остановка бота...")
         
         # Запускаем хэндлеры остановки плагинов
+        await plugin_manager.emit("bot.stop", {}, source="core")
         await plugin_manager.run_handlers(plugin_manager.stop_handlers, bot, starvell, db, plugin_manager)
         
         tasks.stop()
+        await privacy_offers.stop()
         await keep_alive.stop()
         await auto_update.stop()
         await auto_raise.stop()

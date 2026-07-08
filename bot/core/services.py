@@ -84,6 +84,17 @@ class StarvellService:
             if isinstance(e, AuthenticationError):
                 await self._notify_session_error()
             raise
+
+    async def get_offers_visibility(self) -> Optional[str]:
+        if not self.api:
+            raise RuntimeError("API не инициализирован")
+        return await self.api.get_offers_visibility()
+
+    async def update_offers_visibility(self, visibility: str) -> Dict[str, Any]:
+        if not self.api:
+            raise RuntimeError("API не инициализирован")
+        async with self._lock:
+            return await self.api.update_offers_visibility(visibility)
     
     async def get_user_profile(self, user_id: str) -> Optional[Dict[str, Any]]:
         """

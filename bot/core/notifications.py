@@ -687,6 +687,12 @@ class NotificationManager:
                 plugin_order_data['lot_description'] = lot.get("description", "")
         
         # Вызываем хэндлеры плагинов асинхронно
+        await self.plugin_manager.emit(
+            "order.new",
+            {"order": plugin_order_data, "raw_order": order_data},
+            source=source,
+        )
+
         import asyncio
         for handler in self.plugin_manager.new_order_handlers:
             try:
@@ -728,6 +734,12 @@ class NotificationManager:
         }
         
         # Вызываем хэндлеры плагинов асинхронно
+        await self.plugin_manager.emit(
+            "message.new",
+            {"message": plugin_message_data},
+            source=source,
+        )
+
         import asyncio
         for handler in self.plugin_manager.new_message_handlers:
             try:

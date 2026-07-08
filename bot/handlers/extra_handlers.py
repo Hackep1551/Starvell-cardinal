@@ -11,6 +11,7 @@ from aiogram.fsm.state import State, StatesGroup
 
 from bot.keyboards import (
     get_main_menu_page_2,
+    get_main_menu_page_3,
     get_order_confirm_response_menu,
     get_review_response_menu,
     get_welcome_message_menu,
@@ -53,6 +54,17 @@ async def callback_main_page_2(callback: CallbackQuery):
         "⚙️ <b>Дополнительные настройки</b>\n\n"
         "Выберите нужный раздел:",
         reply_markup=get_main_menu_page_2(update_available)
+    )
+
+
+@router.callback_query(F.data == CBT.MAIN_PAGE_3)
+async def callback_main_page_3(callback: CallbackQuery):
+    await callback.answer()
+
+    await callback.message.edit_text(
+        "🧩 <b>Системные настройки</b>\n\n"
+        "Выберите нужный раздел:",
+        reply_markup=get_main_menu_page_3(False)
     )
 
 

@@ -237,6 +237,26 @@ class SessionManager:
             retry=retry,
         )
 
+    async def patch_json(
+        self,
+        url: str,
+        data: Any,
+        referer: str = None,
+        headers: Dict[str, str] = None,
+        include_sid: bool = False,
+        retry: bool = False,
+    ) -> Any:
+        headers = dict(headers or {})
+        headers["content-type"] = "application/json"
+        return await self._request(
+            "PATCH", url,
+            json_data=data,
+            referer=referer,
+            headers=headers,
+            include_sid=include_sid,
+            retry=retry,
+        )
+
     async def post_form(
         self,
         url: str,

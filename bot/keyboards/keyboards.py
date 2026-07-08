@@ -19,6 +19,7 @@ class CBT:
     # Главное меню
     MAIN = "main"
     MAIN_PAGE_2 = "main:p2"
+    MAIN_PAGE_3 = "main:p3"
     GLOBAL_SWITCHES = "global"
     NOTIFICATIONS = "notif"
     PLUGINS = "plugins"
@@ -59,6 +60,14 @@ class CBT:
     SWITCH_USE_WATERMARK = "switch:use_watermark"
     SWITCH_WELCOME_MESSAGE = "switch:welcome_msg"
     SWITCH_KEEP_ALIVE = "switch:keep_alive"
+    SWITCH_PRIVACY_OFFERS = "switch:privacy_offers"
+
+    # Приватность предложений
+    PRIVACY_OFFERS = "privacy_offers"
+    PRIVACY_OFFERS_MODE = "privacy_offers:mode"
+    PRIVACY_OFFERS_TZ = "privacy_offers:tz"
+    PRIVACY_OFFERS_ADD = "privacy_offers:add"
+    PRIVACY_OFFERS_DELETE = "privacy_offers:del"
     
     # Настройки авто-тикета
     AUTO_TICKET_SETTINGS = "autoticket_settings"
@@ -185,6 +194,10 @@ def get_main_menu(update_available: bool = False) -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton(
+                text="1/3",
+                callback_data="empty"
+            ),
+            InlineKeyboardButton(
                 text="➡️ Вперёд",
                 callback_data=CBT.MAIN_PAGE_2
             ),
@@ -233,6 +246,43 @@ def get_main_menu_page_2(update_available: bool = False) -> InlineKeyboardMarkup
         ],
         [
             InlineKeyboardButton(
+                text="👁️ Приватность предложений",
+                callback_data=CBT.PRIVACY_OFFERS
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="⬅️ Назад",
+                callback_data=CBT.MAIN
+            ),
+            InlineKeyboardButton(
+                text="2/3",
+                callback_data="empty"
+            ),
+            InlineKeyboardButton(
+                text="➡️ Вперёд",
+                callback_data=CBT.MAIN_PAGE_3
+            ),
+        ],
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_main_menu_page_3(update_available: bool = False) -> InlineKeyboardMarkup:
+    """Третья страница главного меню"""
+    keyboard = []
+
+    if update_available:
+        keyboard.append([
+            InlineKeyboardButton(
+                text="🔥 Доступно обновление!",
+                callback_data="update_now"
+            )
+        ])
+
+    keyboard.extend([
+        [
+            InlineKeyboardButton(
                 text="📁 Конфиги",
                 callback_data=CBT.CONFIGS_MENU
             ),
@@ -264,7 +314,11 @@ def get_main_menu_page_2(update_available: bool = False) -> InlineKeyboardMarkup
         [
             InlineKeyboardButton(
                 text="⬅️ Назад",
-                callback_data=CBT.MAIN
+                callback_data=CBT.MAIN_PAGE_2
+            ),
+            InlineKeyboardButton(
+                text="3/3",
+                callback_data="empty"
             ),
         ],
     ])
@@ -279,13 +333,17 @@ def get_global_switches_menu(
     auto_ticket: bool = False,
     auto_install: bool = False,
     order_confirm: bool = False,
-    review_response: bool = False
+    review_response: bool = False,
+    privacy_offers: bool | None = None,
 ) -> InlineKeyboardMarkup:
     """Меню глобальных переключателей"""
     
     def switch_text(name: str, enabled: bool) -> str:
         emoji = bool_to_emoji(enabled)
         return f"{emoji} {name}"
+
+    if privacy_offers is None:
+        privacy_offers = BotConfig.PRIVACY_OFFERS_ENABLED()
     
     keyboard = [
         [
@@ -342,6 +400,12 @@ def get_global_switches_menu(
             InlineKeyboardButton(
                 text=switch_text("Вечный онлайн", BotConfig.KEEP_ALIVE_ENABLED()),
                 callback_data=CBT.SWITCH_KEEP_ALIVE
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text=switch_text("Приватность предложений", privacy_offers),
+                callback_data=CBT.SWITCH_PRIVACY_OFFERS
             ),
         ],
         [
@@ -535,7 +599,7 @@ def get_auto_delivery_lots_menu(lots: list, offset: int = 0) -> InlineKeyboardMa
         [
             InlineKeyboardButton(
                 text="🔙 Назад",
-                callback_data=CBT.MAIN
+                callback_data=CBT.MAIN_PAGE_3
             )
         ]
     ])
@@ -1026,7 +1090,7 @@ def get_order_confirm_response_menu(enabled: bool, text: str) -> InlineKeyboardM
         [
             InlineKeyboardButton(
                 text="🔙 Назад",
-                callback_data=CBT.MAIN_PAGE_2
+                callback_data=CBT.MAIN_PAGE_3
             )
         ]
     ]
@@ -1169,7 +1233,7 @@ def get_authorized_users_menu(admin_ids: list) -> InlineKeyboardMarkup:
     keyboard.append([
         InlineKeyboardButton(
             text="🔙 Назад",
-            callback_data=CBT.MAIN_PAGE_2
+            callback_data=CBT.MAIN_PAGE_3
         )
     ])
     
@@ -1291,7 +1355,65 @@ def get_proxy_menu(enabled: bool, proxy_set: bool, proxy_type: str = 'socks5', i
         ])
 
     keyboard.append([
-        InlineKeyboardButton(text="🔙 Назад", callback_data=CBT.MAIN_PAGE_2)
+        InlineKeyboardButton(text="🔙 Назад", callback_data=CBT.MAIN_PAGE_3)
+    ])
+
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_privacy_offers_menu(
+    enabled: bool,
+    mode: str,
+    timezone: str,
+    windows: list,
+) -> InlineKeyboardMarkup:
+    mode_text = "Офлайн" if mode == "offline" else "Онлайн"
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                text=f"{bool_to_emoji(enabled)} Автопереключение",
+                callback_data=CBT.SWITCH_PRIVACY_OFFERS
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text=f"🔁 Режим: {mode_text}",
+                callback_data=CBT.PRIVACY_OFFERS_MODE
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text=f"🌐 Часовой пояс: {timezone}",
+                callback_data=CBT.PRIVACY_OFFERS_TZ
+            )
+        ],
+    ]
+
+    for index, window in enumerate(windows):
+        keyboard.append([
+            InlineKeyboardButton(
+                text=f"{index + 1}. {window.get('start')} - {window.get('end')}",
+                callback_data="empty"
+            ),
+            InlineKeyboardButton(
+                text="🗑",
+                callback_data=f"{CBT.PRIVACY_OFFERS_DELETE}:{index}"
+            )
+        ])
+
+    keyboard.extend([
+        [
+            InlineKeyboardButton(
+                text="➕ Добавить окно",
+                callback_data=CBT.PRIVACY_OFFERS_ADD
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="🔙 Назад",
+                callback_data=CBT.MAIN_PAGE_2
+            )
+        ],
     ])
 
     return InlineKeyboardMarkup(inline_keyboard=keyboard)

@@ -54,6 +54,63 @@ BIND_TO_INIT = [on_init]
 | `DESCRIPTION` | str | Описание плагина |
 | `AUTHOR` | str | Автор плагина |
 | `UUID` | str | Уникальный ID плагина |
+
+## Plugin SDK
+
+Новый рекомендуемый способ писать плагины — функция `setup(context)`.
+Старые `BIND_TO_*` продолжают работать, но `context` стабильнее: плагину не нужно импортировать внутренние модули бота.
+
+```python
+NAME = "SDK Example"
+VERSION = "1.0.0"
+DESCRIPTION = "Пример плагина на PluginContext"
+AUTHOR = "You"
+UUID = "b7c1683a-4b0c-4cdb-a9dc-51d8f1f4f0b7"
+
+
+def setup(context):
+    @context.on("message.new")
+    async def on_message(event):
+        message = event.data["message"]
+        await context.api.send_message(
+            message["chat_id"],
+            "Сообщение получено"
+        )
+```
+
+### Что есть в `context`
+
+| Поле | Что это |
+|------|---------|
+| `context.bot` | Aiogram Bot |
+| `context.api` / `context.starvell` | `StarvellService` |
+| `context.db` | Локальное хранилище |
+| `context.notify` | `NotificationManager` |
+| `context.config` | `ConfigManager` |
+| `context.events` | EventBus |
+| `context.plugin_manager` | PluginManager |
+| `context.plugin` | Данные текущего плагина |
+
+### События EventBus
+
+| Событие | Когда вызывается |
+|---------|------------------|
+| `bot.init` | Бот и сервисы инициализированы |
+| `bot.start` | Перед запуском polling |
+| `bot.stop` | Перед остановкой |
+| `message.new` | Новое сообщение через polling или Socket.IO |
+| `order.new` | Новый заказ через polling или Socket.IO |
+| `*` | Любое событие, удобно для отладки |
+
+Хэндлер получает объект события:
+
+```python
+async def handler(event):
+    print(event.name)
+    print(event.source)
+    print(event.data)
+```
+
 ## События плагинов
 
 ### Жизненный цикл

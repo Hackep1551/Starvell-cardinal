@@ -123,6 +123,14 @@ class ConfigManager:
         self._config['KeepAlive'] = {
             'enabled': 'true'
         }
+
+        self._config['PrivacyOffers'] = {
+            'enabled': 'false',
+            'mode': 'offline',
+            'timezone': 'Europe/Moscow',
+            'windows': '[]',
+            'lastApplied': ''
+        }
         
         self._config['Other'] = {
             'debug': 'false',
@@ -209,6 +217,13 @@ class ConfigManager:
             },
             'KeepAlive': {
                 'enabled': 'true'
+            },
+            'PrivacyOffers': {
+                'enabled': 'false',
+                'mode': 'offline',
+                'timezone': 'Europe/Moscow',
+                'windows': '[]',
+                'lastApplied': ''
             },
             'Other': {
                 'debug': 'false',
@@ -620,6 +635,28 @@ class BotConfig:
     def KEEP_ALIVE_ENABLED() -> bool:
         """Поддерживать онлайн статус"""
         return _config_manager.get('KeepAlive', 'enabled', True)
+
+    @staticmethod
+    def PRIVACY_OFFERS_ENABLED() -> bool:
+        return _config_manager.get('PrivacyOffers', 'enabled', False)
+
+    @staticmethod
+    def PRIVACY_OFFERS_MODE() -> str:
+        mode = str(_config_manager.get('PrivacyOffers', 'mode', 'offline') or 'offline').strip().lower()
+        return mode if mode in ('offline', 'online') else 'offline'
+
+    @staticmethod
+    def PRIVACY_OFFERS_TIMEZONE() -> str:
+        return str(_config_manager.get('PrivacyOffers', 'timezone', 'Europe/Moscow') or 'Europe/Moscow').strip()
+
+    @staticmethod
+    def PRIVACY_OFFERS_WINDOWS() -> list:
+        windows = _config_manager.get('PrivacyOffers', 'windows', [])
+        return windows if isinstance(windows, list) else []
+
+    @staticmethod
+    def PRIVACY_OFFERS_LAST_APPLIED() -> str:
+        return str(_config_manager.get('PrivacyOffers', 'lastApplied', '') or '')
     
     # === Чёрный список ===
     @staticmethod

@@ -131,6 +131,25 @@ class StarAPI:
             "sid": sid or self.session.get_sid(),
             "theme": page_props.get("currentTheme"),
         }
+
+    async def get_profile_settings(self) -> Dict[str, Any]:
+        data = await self._get_next_data("settings/profile.json")
+        return data.get("pageProps", {}).get("settings", {}).get("settings", {})
+
+    async def get_offers_visibility(self) -> Optional[str]:
+        settings = await self.get_profile_settings()
+        value = settings.get("offersVisibility")
+        return value if isinstance(value, str) else None
+
+    async def update_offers_visibility(self, visibility: str) -> Dict[str, Any]:
+        if visibility not in {"PUBLIC", "PROFILE_ONLY", "HIDDEN"}:
+            raise ValueError("visibility должен быть PUBLIC, PROFILE_ONLY или HIDDEN")
+
+        return await self.session.patch_json(
+            f"{self.config.API_URL}/user/settings",
+            data={"offersVisibility": visibility},
+            referer=f"{self.config.BASE_URL}/settings/profile",
+        )
     
     async def get_user_profile(self, user_id: str) -> Optional[Dict[str, Any]]:
         """

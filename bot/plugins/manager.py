@@ -12,6 +12,10 @@ from uuid import UUID
 from pathlib import Path
 from types import ModuleType
 
+from bot.plugins.events import EventBus
+from bot.plugins.sdk import PluginContext
+from bot.core.config import get_config_manager
+
 
 logger = logging.getLogger("Plugins")
 
@@ -48,11 +52,17 @@ class PluginData:
 class PluginManager:
     """Менеджер плагинов"""
     
-    def __init__(self):
+    def __init__(self, event_bus: Optional[EventBus] = None):
         self.plugins: Dict[str, PluginData] = {}
         self.plugins_dir = Path("plugins")
         self.disabled_cache = Path("storage/cache/disabled_plugins.txt")
         self.disabled_plugins: list[str] = []
+        self.events = event_bus or EventBus()
+        self.events.set_enabled_checker(self.is_plugin_uuid_enabled)
+        self.bot = None
+        self.starvell = None
+        self.db = None
+        self.notifications = None
         
         # Хэндлеры событий
         self.init_handlers: list[Callable] = []
@@ -61,6 +71,32 @@ class PluginManager:
         self.new_order_handlers: list[Callable] = []
         self.new_message_handlers: list[Callable] = []
         self.settings_handlers: Dict[str, list[Callable]] = {}  # {uuid: [handler]}
+
+    def set_runtime(self, bot=None, starvell=None, db=None, notifications=None):
+        self.bot = bot
+        self.starvell = starvell
+        self.db = db
+        self.notifications = notifications
+
+    def is_plugin_uuid_enabled(self, uuid: Optional[str]) -> bool:
+        if not uuid:
+            return True
+        plugin = self.plugins.get(uuid)
+        return bool(plugin and plugin.enabled)
+
+    def create_context(self, uuid: Optional[str] = None) -> PluginContext:
+        plugin = self.plugins.get(uuid) if uuid else None
+        return PluginContext(
+            bot=self.bot,
+            api=self.starvell,
+            starvell=self.starvell,
+            db=self.db,
+            notify=self.notifications,
+            config=get_config_manager(),
+            events=self.events,
+            plugin_manager=self,
+            plugin=plugin,
+        )
         
     def load_disabled_plugins(self):
         """Загрузить список отключённых плагинов"""
@@ -290,6 +326,30 @@ class PluginManager:
                         logger.debug(f"Text handler {handler_name} зарегистрирован из плагина {plugin.name}")
             
             logger.debug(f"Хэндлеры плагина {plugin.name} зарегистрированы")
+
+    async def setup_plugins(self):
+        for uuid, plugin in self.plugins.items():
+            if not plugin.enabled:
+                continue
+
+            setup = getattr(plugin.module, "setup", None)
+            if not setup:
+                continue
+
+            try:
+                context = self.create_context(uuid)
+                if asyncio.iscoroutinefunction(setup):
+                    await setup(context)
+                else:
+                    result = setup(context)
+                    if asyncio.iscoroutine(result):
+                        await result
+                logger.debug(f"SDK setup выполнен для плагина {plugin.name}")
+            except Exception as e:
+                logger.error(f"Ошибка setup(context) плагина {plugin.name}: {e}", exc_info=True)
+
+    async def emit(self, event_name: str, data: Optional[dict] = None, source: str = "core"):
+        await self.events.emit(event_name, data or {}, source=source)
     
     async def run_handlers(self, handlers: list[Callable], *args):
         """Выполнить список хэндлеров (поддерживает sync и async)"""

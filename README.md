@@ -185,28 +185,25 @@ DESCRIPTION = "Описание моего плагина"
 AUTHOR = "Ваше имя"
 UUID = "123e4567-e89b-42d3-a456-426614174000"
 
-# === ФУНКЦИИ-ОБРАБОТЧИКИ ===
-def on_init():
-    """Вызывается при загрузке плагина"""
-    print(f"✅ {NAME} загружен!")
+def setup(context):
+    @context.on("bot.init")
+    async def on_init(event):
+        print(f"✅ {NAME} загружен!")
 
-async def on_new_message(message_data, *args):
-    """Вызывается при получении нового сообщения"""
-    print(f"📨 Сообщение от {message_data['author']}: {message_data['content']}")
-
-# === ПРИВЯЗКА К СОБЫТИЯМ ===
-BIND_TO_INIT = [on_init]
-BIND_TO_NEW_MESSAGE = [on_new_message]
+    @context.on("message.new")
+    async def on_new_message(event):
+        message = event.data["message"]
+        print(f"📨 Сообщение от {message['author']}: {message['content']}")
 ```
 
 ### Доступные события
 
-- **`BIND_TO_INIT`** — после инициализации бота
-- **`BIND_TO_START`** — перед запуском polling
-- **`BIND_TO_STOP`** — перед остановкой бота
-- **`BIND_TO_DELETE`** — при удалении плагина
-- **`BIND_TO_NEW_MESSAGE`** — при получении нового сообщения через polling или Socket.IO
-- **`BIND_TO_NEW_ORDER`** — при получении нового заказа через polling или Socket.IO
+- **`bot.init`** — после инициализации бота
+- **`bot.start`** — перед запуском polling
+- **`bot.stop`** — перед остановкой бота
+- **`message.new`** — при получении нового сообщения через polling или Socket.IO
+- **`order.new`** — при получении нового заказа через polling или Socket.IO
+- Старые `BIND_TO_*` события оставлены для совместимости
 
 Полная документация: [PLUGINS_API.md](docs/PLUGINS_API.md)
 

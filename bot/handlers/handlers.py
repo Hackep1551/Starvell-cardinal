@@ -5,6 +5,8 @@
 import hashlib
 import asyncio
 import time
+import re
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
@@ -22,9 +24,11 @@ from bot.keyboards import (
     get_plugins_menu,
     get_select_template_menu,
     get_custom_commands_menu,
+    get_privacy_offers_menu,
     CBT,
 )
 from bot.handlers import auto_delivery_handlers, blacklist_handlers, plugins_handlers, templates_handlers, extra_handlers, custom_commands_handlers
+from bot.features.privacy_offers import add_window, remove_window, validate_windows
 
 
 router = Router()
@@ -74,6 +78,11 @@ class AutoTicketState(StatesGroup):
     """Состояния для настройки авто-тикетов"""
     waiting_for_interval = State()
     waiting_for_max_orders = State()
+
+
+class PrivacyOffersState(StatesGroup):
+    waiting_for_window = State()
+    waiting_for_timezone = State()
 
 
 # === Функции авторизации ===
@@ -866,6 +875,53 @@ async def callback_global_switches(callback: CallbackQuery):
     )
 
 
+def _privacy_offers_text() -> str:
+    enabled = BotConfig.PRIVACY_OFFERS_ENABLED()
+    mode = BotConfig.PRIVACY_OFFERS_MODE()
+    timezone = BotConfig.PRIVACY_OFFERS_TIMEZONE()
+    windows = BotConfig.PRIVACY_OFFERS_WINDOWS()
+    mode_text = "Офлайн" if mode == "offline" else "Онлайн"
+    action_text = (
+        "внутри окон предложения скрываются везде, вне окон показываются"
+        if mode == "offline"
+        else "внутри окон предложения показываются, вне окон скрываются везде"
+    )
+    windows_text = "\n".join(
+        f"{i + 1}. <code>{window.get('start')} - {window.get('end')}</code>"
+        for i, window in enumerate(windows)
+    ) or "Окна не добавлены"
+
+    return (
+        "👁️ <b>Приватность предложений</b>\n\n"
+        f"Статус: <b>{'Включено ✅' if enabled else 'Выключено ❌'}</b>\n"
+        f"Режим: <b>{mode_text}</b>\n"
+        f"Часовой пояс: <code>{timezone}</code>\n"
+        f"Проверка: <code>60 сек</code>\n\n"
+        f"{action_text}.\n\n"
+        f"<b>Окна:</b>\n{windows_text}"
+    )
+
+
+async def _show_privacy_offers_menu(message):
+    await message.edit_text(
+        _privacy_offers_text(),
+        reply_markup=get_privacy_offers_menu(
+            BotConfig.PRIVACY_OFFERS_ENABLED(),
+            BotConfig.PRIVACY_OFFERS_MODE(),
+            BotConfig.PRIVACY_OFFERS_TIMEZONE(),
+            BotConfig.PRIVACY_OFFERS_WINDOWS(),
+        )
+    )
+
+
+async def _trigger_privacy_check(privacy_offers):
+    if privacy_offers and BotConfig.PRIVACY_OFFERS_ENABLED():
+        try:
+            await privacy_offers.trigger_immediate_check()
+        except Exception:
+            pass
+
+
 @router.callback_query(F.data == CBT.SWITCH_AUTO_BUMP)
 async def callback_switch_auto_bump(callback: CallbackQuery, auto_raise=None, **kwargs):
     """Переключить авто-поднятие"""
@@ -1136,6 +1192,155 @@ async def callback_switch_keep_alive(callback: CallbackQuery, keep_alive=None, *
         status_text,
         reply_markup=get_global_switches_menu(auto_bump, auto_delivery, auto_restore, auto_read, auto_ticket, auto_install, order_confirm, review_response)
     )
+
+
+@router.callback_query(F.data == CBT.PRIVACY_OFFERS)
+async def callback_privacy_offers(callback: CallbackQuery):
+    await callback.answer()
+    await _show_privacy_offers_menu(callback.message)
+
+
+@router.callback_query(F.data == CBT.SWITCH_PRIVACY_OFFERS)
+async def callback_switch_privacy_offers(callback: CallbackQuery, privacy_offers=None, **kwargs):
+    current = BotConfig.PRIVACY_OFFERS_ENABLED()
+    get_config_manager().set("PrivacyOffers", "enabled", not current)
+    get_config_manager().set("PrivacyOffers", "lastApplied", "")
+
+    status = "включено" if not current else "выключено"
+    await callback.answer(f"Приватность предложений {status}", show_alert=False)
+    await _trigger_privacy_check(privacy_offers)
+
+    if callback.message and callback.message.text and "Приватность предложений" in callback.message.text:
+        await _show_privacy_offers_menu(callback.message)
+        return
+
+    auto_bump = BotConfig.AUTO_BUMP_ENABLED()
+    auto_delivery = BotConfig.AUTO_DELIVERY_ENABLED()
+    auto_restore = BotConfig.AUTO_RESTORE_ENABLED()
+    auto_read = BotConfig.AUTO_READ_ENABLED()
+    auto_ticket = BotConfig.AUTO_TICKET_ENABLED()
+    auto_install = BotConfig.AUTO_UPDATE_INSTALL()
+    order_confirm = BotConfig.ORDER_CONFIRM_RESPONSE_ENABLED()
+    review_response = BotConfig.REVIEW_RESPONSE_ENABLED()
+
+    status_text = "⚙️ <b>Глобальные переключатели</b>\n\nЗдесь вы можете включать и отключать основные функции бота.\n\n"
+
+    await callback.message.edit_text(
+        status_text,
+        reply_markup=get_global_switches_menu(auto_bump, auto_delivery, auto_restore, auto_read, auto_ticket, auto_install, order_confirm, review_response)
+    )
+
+
+@router.callback_query(F.data == CBT.PRIVACY_OFFERS_MODE)
+async def callback_privacy_offers_mode(callback: CallbackQuery, privacy_offers=None, **kwargs):
+    current = BotConfig.PRIVACY_OFFERS_MODE()
+    next_mode = "online" if current == "offline" else "offline"
+    get_config_manager().set("PrivacyOffers", "mode", next_mode)
+    get_config_manager().set("PrivacyOffers", "lastApplied", "")
+    await callback.answer(f"Режим: {'Онлайн' if next_mode == 'online' else 'Офлайн'}", show_alert=False)
+    await _trigger_privacy_check(privacy_offers)
+    await _show_privacy_offers_menu(callback.message)
+
+
+@router.callback_query(F.data == CBT.PRIVACY_OFFERS_TZ)
+async def callback_privacy_offers_timezone(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(PrivacyOffersState.waiting_for_timezone)
+    await callback.message.answer(
+        "🌐 Введите часовой пояс, например:\n"
+        "<code>Europe/Moscow</code>\n\n"
+        "Отправьте /cancel для отмены"
+    )
+    await callback.answer()
+
+
+@router.message(PrivacyOffersState.waiting_for_timezone)
+async def process_privacy_offers_timezone(message: Message, state: FSMContext, privacy_offers=None, **kwargs):
+    if message.text == "/cancel":
+        await state.clear()
+        await message.answer("❌ Отменено")
+        return
+
+    timezone = (message.text or "").strip()
+    try:
+        ZoneInfo(timezone)
+    except ZoneInfoNotFoundError:
+        await message.answer(
+            "❌ Неверный часовой пояс. Пример: <code>Europe/Moscow</code>\n"
+            "Попробуйте ещё раз или отправьте /cancel"
+        )
+        return
+
+    get_config_manager().set("PrivacyOffers", "timezone", timezone)
+    get_config_manager().set("PrivacyOffers", "lastApplied", "")
+    await state.clear()
+    await _trigger_privacy_check(privacy_offers)
+    await message.answer("✅ Часовой пояс сохранён", reply_markup=get_privacy_offers_menu(
+        BotConfig.PRIVACY_OFFERS_ENABLED(),
+        BotConfig.PRIVACY_OFFERS_MODE(),
+        BotConfig.PRIVACY_OFFERS_TIMEZONE(),
+        BotConfig.PRIVACY_OFFERS_WINDOWS(),
+    ))
+
+
+@router.callback_query(F.data == CBT.PRIVACY_OFFERS_ADD)
+async def callback_privacy_offers_add(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(PrivacyOffersState.waiting_for_window)
+    await callback.message.answer(
+        "⏱️ Введите окно в формате <code>HH:MM-HH:MM</code>\n\n"
+        "Например: <code>23:00-07:00</code>\n"
+        "Отправьте /cancel для отмены"
+    )
+    await callback.answer()
+
+
+@router.message(PrivacyOffersState.waiting_for_window)
+async def process_privacy_offers_window(message: Message, state: FSMContext, privacy_offers=None, **kwargs):
+    if message.text == "/cancel":
+        await state.clear()
+        await message.answer("❌ Отменено")
+        return
+
+    parts = [part for part in re.split(r"\s*[-–—]\s*|\s+", (message.text or "").strip()) if part]
+    if len(parts) != 2:
+        await message.answer(
+            "❌ Неверный формат. Нужно так: <code>23:00-07:00</code>\n"
+            "Попробуйте ещё раз или отправьте /cancel"
+        )
+        return
+
+    try:
+        windows = add_window(BotConfig.PRIVACY_OFFERS_WINDOWS(), parts[0], parts[1])
+    except ValueError as e:
+        await message.answer(f"❌ {e}\nПопробуйте ещё раз или отправьте /cancel")
+        return
+
+    get_config_manager().set("PrivacyOffers", "windows", windows)
+    get_config_manager().set("PrivacyOffers", "lastApplied", "")
+    await state.clear()
+    await _trigger_privacy_check(privacy_offers)
+    await message.answer("✅ Окно добавлено", reply_markup=get_privacy_offers_menu(
+        BotConfig.PRIVACY_OFFERS_ENABLED(),
+        BotConfig.PRIVACY_OFFERS_MODE(),
+        BotConfig.PRIVACY_OFFERS_TIMEZONE(),
+        BotConfig.PRIVACY_OFFERS_WINDOWS(),
+    ))
+
+
+@router.callback_query(F.data.startswith(f"{CBT.PRIVACY_OFFERS_DELETE}:"))
+async def callback_privacy_offers_delete(callback: CallbackQuery, privacy_offers=None, **kwargs):
+    try:
+        index = int(callback.data.rsplit(":", 1)[1])
+        windows = remove_window(BotConfig.PRIVACY_OFFERS_WINDOWS(), index)
+        validate_windows(windows)
+    except Exception:
+        await callback.answer("Не удалось удалить окно", show_alert=True)
+        return
+
+    get_config_manager().set("PrivacyOffers", "windows", windows)
+    get_config_manager().set("PrivacyOffers", "lastApplied", "")
+    await callback.answer("Окно удалено", show_alert=False)
+    await _trigger_privacy_check(privacy_offers)
+    await _show_privacy_offers_menu(callback.message)
 
 
 @router.callback_query(F.data == CBT.SWITCH_AUTO_TICKET_NOTIFY)
